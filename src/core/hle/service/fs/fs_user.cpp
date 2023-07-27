@@ -671,7 +671,7 @@ void FS_USER::GetFormatInfo(Kernel::HLERequestContext& ctx) {
 }
 
 void FS_USER::GetProductInfo(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x82E, 1, 0);
+    IPC::RequestParser rp(ctx);
 
     u32 process_id = rp.Pop<u32>();
 
@@ -845,7 +845,7 @@ void FS_USER::ObsoletedGetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
 }
 
 void FS_USER::SetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x86E, 3, 0);
+    IPC::RequestParser rp(ctx);
     u32 secure_value_slot = rp.Pop<u32>();
     u64 value = rp.Pop<u64>();
 
@@ -861,7 +861,7 @@ void FS_USER::SetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
 }
 
 void FS_USER::GetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x86F, 1, 0);
+    IPC::RequestParser rp(ctx);
 
     u32 secure_value_slot = rp.Pop<u32>();
 
@@ -882,7 +882,7 @@ void FS_USER::GetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
 }
 
 void FS_USER::SetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x875, 6, 0);
+    IPC::RequestParser rp(ctx);
     auto archive_handle = rp.PopRaw<ArchiveHandle>();
     u32 secure_value_slot = rp.Pop<u32>();
     u64 value = rp.Pop<u64>();
@@ -901,7 +901,7 @@ void FS_USER::SetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
 }
 
 void FS_USER::GetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x876, 3, 0);
+    IPC::RequestParser rp(ctx);
 
     auto archive_handle = rp.PopRaw<ArchiveHandle>();
     u32 secure_value_slot = rp.Pop<u32>();
@@ -1049,7 +1049,7 @@ FS_USER::FS_USER(Core::System& system)
         {0x082B, nullptr, "CardNorDirectRead_4xIO"},
         {0x082C, nullptr, "CardNorDirectCpuWriteWithoutVerify"},
         {0x082D, nullptr, "CardNorDirectSectorEraseWithoutVerify"},
-        {0x082E, nullptr, "GetProductInfo"},
+        {0x082E, &FS_USER::GetProductInfo, "GetProductInfo"},
         {0x082F, &FS_USER::GetProgramLaunchInfo, "GetProgramLaunchInfo"},
         {0x0830, &FS_USER::ObsoletedCreateExtSaveData, "Obsoleted_3_0_CreateExtSaveData"},
         {0x0831, nullptr, "CreateSharedExtSaveData"},
@@ -1104,8 +1104,8 @@ FS_USER::FS_USER(Core::System& system)
         {0x0862, &FS_USER::SetPriority, "SetPriority"},
         {0x0863, &FS_USER::GetPriority, "GetPriority"},
         {0x0864, nullptr, "GetNandInfo"},
-        {0x0865, &FS_USER::SetSaveDataSecureValue, "SetSaveDataSecureValue"},
-        {0x0866, &FS_USER::GetSaveDataSecureValue, "GetSaveDataSecureValue"},
+        {0x0865, &FS_USER::ObsoletedSetSaveDataSecureValue, "SetSaveDataSecureValue"},
+        {0x0866, &FS_USER::ObsoletedGetSaveDataSecureValue, "GetSaveDataSecureValue"},
         {0x0867, nullptr, "ControlSecureSave"},
         {0x0868, nullptr, "GetMediaType"},
         {0x0869, nullptr, "GetNandEraseCount"},

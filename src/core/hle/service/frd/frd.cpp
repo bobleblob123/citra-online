@@ -51,7 +51,7 @@ Module::Interface::Interface(std::shared_ptr<Module> frd, const char* name, u32 
 Module::Interface::~Interface() = default;
 
 void Module::Interface::HasLoggedIn(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x1, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
 
     rb.Push(RESULT_SUCCESS);
@@ -59,7 +59,7 @@ void Module::Interface::HasLoggedIn(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::IsOnline(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x2, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
 
     // This is actually different than HasLoggedIn,
@@ -71,7 +71,7 @@ void Module::Interface::IsOnline(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::Login(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x3, 0, 2);
+    IPC::RequestParser rp(ctx);
     auto event = rp.PopObject<Kernel::Event>();
 
     frd->has_logged_in = true;
@@ -82,7 +82,7 @@ void Module::Interface::Login(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::Logout(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x4, 0, 0);
+    IPC::RequestParser rp(ctx);
 
     frd->has_logged_in = false;
 
@@ -91,14 +91,14 @@ void Module::Interface::Logout(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyFriendKey(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x5, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw(frd->my_account_data.my_key);
 }
 
 void Module::Interface::GetMyPreference(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x6, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(4, 0);
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(frd->my_account_data.my_pref_public_mode);
@@ -107,7 +107,7 @@ void Module::Interface::GetMyPreference(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyProfile(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x7, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(3, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw<FriendProfile>(frd->my_account_data.my_profile);
@@ -125,21 +125,21 @@ void Module::Interface::GetMyPresence(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyScreenName(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x9, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(7, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw<std::array<u16_le, FRIEND_SCREEN_NAME_SIZE>>(frd->my_account_data.my_screen_name);
 }
 
 void Module::Interface::GetMyMii(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xA, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(25, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw<Mii::ChecksummedMiiData>(frd->my_account_data.my_mii_data);
 }
 
 void Module::Interface::GetMyLocalAccountId(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xB, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(1); // Assume using account ID 1
@@ -148,7 +148,7 @@ void Module::Interface::GetMyLocalAccountId(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyPlayingGame(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xC, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
 
     TitleData title_data{};
@@ -159,14 +159,14 @@ void Module::Interface::GetMyPlayingGame(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyFavoriteGame(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xD, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw<TitleData>(frd->my_account_data.my_fav_game);
 }
 
 void Module::Interface::GetMyNcPrincipalId(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xE, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(RESULT_SUCCESS);
     rb.Push<u32>(0); // Stubbed
@@ -175,14 +175,14 @@ void Module::Interface::GetMyNcPrincipalId(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetMyComment(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0xF, 0, 0);
+    IPC::RequestParser rp(ctx);
     IPC::RequestBuilder rb = rp.MakeBuilder(10, 0);
     rb.Push(RESULT_SUCCESS);
     rb.PushRaw<std::array<u16_le, FRIEND_COMMENT_SIZE>>(frd->my_account_data.my_comment);
 }
 
 void Module::Interface::GetMyPassword(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x10, 1, 0);
+    IPC::RequestParser rp(ctx);
     u32 pass_len = rp.Pop<u32>();
     std::vector<u8> pass_buf(pass_len);
 
@@ -220,7 +220,7 @@ void Module::Interface::GetFriendKeyList(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendPresence(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x12, 1, 2);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     const std::vector<u8> frd_keys = rp.PopStaticBuffer();
     ASSERT(frd_keys.size() == count * sizeof(FriendKey));
@@ -235,7 +235,7 @@ void Module::Interface::GetFriendPresence(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendScreenName(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x12, 5, 2);
+    IPC::RequestParser rp(ctx);
     const u32 name_count = rp.Pop<u32>();
     const u32 font_count = rp.Pop<u32>();
     const u32 count = rp.Pop<u32>();
@@ -267,7 +267,7 @@ void Module::Interface::GetFriendScreenName(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendMii(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x14, 1, 4);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     const std::vector<u8> frd_keys = rp.PopStaticBuffer();
     ASSERT(frd_keys.size() == count * sizeof(FriendKey));
@@ -319,7 +319,7 @@ void Module::Interface::GetFriendProfile(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendRelationship(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x16, 1, 2);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     const std::vector<u8> frd_keys = rp.PopStaticBuffer();
     ASSERT(frd_keys.size() == count * sizeof(FriendKey));
@@ -380,7 +380,7 @@ void Module::Interface::GetFriendAttributeFlags(Kernel::HLERequestContext& ctx) 
 }
 
 void Module::Interface::GetFriendPlayingGame(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x18, 1, 4);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     const std::vector<u8> frd_keys = rp.PopStaticBuffer();
     ASSERT(frd_keys.size() == count * sizeof(FriendKey));
@@ -400,7 +400,7 @@ void Module::Interface::GetFriendPlayingGame(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendFavoriteGame(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x19, 1, 2);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     const std::vector<u8> frd_keys = rp.PopStaticBuffer();
     ASSERT(frd_keys.size() == count * sizeof(FriendKey));
@@ -423,7 +423,7 @@ void Module::Interface::GetFriendFavoriteGame(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetFriendInfo(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x1A, 3, 4);
+    IPC::RequestParser rp(ctx);
     const u32 count = rp.Pop<u32>();
     rp.Pop<u32>(); // replace_unknown_characters
     rp.Pop<u32>(); // replace_bad_words
@@ -453,7 +453,7 @@ void Module::Interface::GetFriendInfo(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::IsIncludedInFriendList(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x1B, 2, 0);
+    IPC::RequestParser rp(ctx);
     u64_le friendCode = rp.Pop<u64>();
 
     bool is_included = false;
@@ -501,7 +501,7 @@ void Module::Interface::UnscrambleLocalFriendCode(Kernel::HLERequestContext& ctx
 }
 
 void Module::Interface::UpdateGameModeDescription(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x1D, 0, 2);
+    IPC::RequestParser rp(ctx);
     const std::vector<u8> new_game_mode_description = rp.PopStaticBuffer();
 
     u32 copy_size = std::min<u32>(static_cast<u32>(new_game_mode_description.size()),
@@ -513,7 +513,7 @@ void Module::Interface::UpdateGameModeDescription(Kernel::HLERequestContext& ctx
 }
 
 void Module::Interface::UpdateGameMode(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x1E, 11, 2);
+    IPC::RequestParser rp(ctx);
     auto game_mode = rp.PopRaw<GameMode>();
     const std::vector<u8> new_game_mode_description = rp.PopStaticBuffer();
 
@@ -527,7 +527,7 @@ void Module::Interface::UpdateGameMode(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::AttachToEventNotification(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x20, 0, 2);
+    IPC::RequestParser rp(ctx);
     frd->notif_event = rp.PopObject<Kernel::Event>();
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -535,7 +535,7 @@ void Module::Interface::AttachToEventNotification(Kernel::HLERequestContext& ctx
 }
 
 void Module::Interface::SetNotificationMask(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x21, 1, 0);
+    IPC::RequestParser rp(ctx);
     frd->notif_event_mask = rp.Pop<u32>();
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -543,7 +543,7 @@ void Module::Interface::SetNotificationMask(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetEventNotification(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x22, 1, 0);
+    IPC::RequestParser rp(ctx);
     u32 count = rp.Pop<u32>();
 
     // LOG_WARNING(Service_FRD, "(STUBBED) called");
@@ -556,7 +556,7 @@ void Module::Interface::GetEventNotification(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::GetLastResponseResult(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x23, 0, 0);
+    IPC::RequestParser rp(ctx);
 
     LOG_WARNING(Service_FRD, "(STUBBED) called");
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -564,7 +564,7 @@ void Module::Interface::GetLastResponseResult(Kernel::HLERequestContext& ctx) {
 }
 
 void Module::Interface::RequestGameAuthentication(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x28, 9, 4);
+    IPC::RequestParser rp(ctx);
     u32 gameID = rp.Pop<u32>();
 
     struct ScreenNameIPC {
@@ -691,7 +691,7 @@ void Module::Interface::RequestGameAuthentication(Kernel::HLERequestContext& ctx
 }
 
 void Module::Interface::GetGameAuthenticationData(Kernel::HLERequestContext& ctx) {
-    IPC::RequestParser rp(ctx, 0x29, 0, 0);
+    IPC::RequestParser rp(ctx);
 
     std::vector<u8> out_auth_data(sizeof(GameAuthenticationData));
     memcpy(out_auth_data.data(), &frd->last_game_auth_data, sizeof(GameAuthenticationData));

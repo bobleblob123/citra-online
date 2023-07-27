@@ -252,6 +252,16 @@ class HTTP_C final : public ServiceFramework<HTTP_C, SessionData> {
 public:
     HTTP_C();
 
+    struct ClCertAData {
+        std::vector<u8> certificate;
+        std::vector<u8> private_key;
+        bool init = false;
+    };
+
+    const ClCertAData& GetClCertA() const {
+        return ClCertA;
+    }
+
 private:
     /**
      * HTTP_C::Initialize service function
@@ -427,11 +437,7 @@ private:
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;
 
-    struct {
-        std::vector<u8> certificate;
-        std::vector<u8> private_key;
-        bool init = false;
-    } ClCertA;
+    ClCertAData ClCertA;
 
 private:
     template <class Archive>
@@ -451,6 +457,8 @@ private:
     }
     friend class boost::serialization::access;
 };
+
+std::shared_ptr<HTTP_C> GetService(Core::System& system);
 
 void InstallInterfaces(Core::System& system);
 

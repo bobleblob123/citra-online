@@ -14,6 +14,8 @@ add_library(network STATIC
     room_member.h
     verify_user.cpp
     verify_user.h
+    network_clients/nasc.h
+    network_clients/nasc.cpp
 )
 
 create_target_directory_groups(network)
@@ -26,7 +28,7 @@ if (ENABLE_WEB_SERVICE)
     endif()
 endif()
 
-target_link_libraries(network PRIVATE citra_common enet Boost::serialization)
+target_link_libraries(network PRIVATE citra_common enet Boost::serialization cryptopp)
 set_target_properties(network PROPERTIES INTERPROCEDURAL_OPTIMIZATION ${ENABLE_LTO})
 
 if (CITRA_USE_PRECOMPILED_HEADERS)

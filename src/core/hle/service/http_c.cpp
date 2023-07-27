@@ -933,6 +933,10 @@ HTTP_C::HTTP_C() : ServiceFramework("http:C", 32) {
     DecryptClCertA();
 }
 
+std::shared_ptr<HTTP_C> GetService(Core::System& system) {
+    return system.ServiceManager().GetService<HTTP_C>("http:C");
+}
+
 void InstallInterfaces(Core::System& system) {
     auto& service_manager = system.ServiceManager();
     std::make_shared<HTTP_C>()->InstallAsService(service_manager);

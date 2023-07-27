@@ -39,11 +39,21 @@ class FS_USER final : public ServiceFramework<FS_USER, ClientSlot> {
 public:
     explicit FS_USER(Core::System& system);
 
-    // On real HW this is part of FS:Reg. But since that module is only used by loader and pm, which
-    // we HLEed, we can just directly use it here
-    void Register(u32 process_id, u64 program_id, const std::string& filepath);
+    // On real HW this is part of FSReg (FSReg:Register). But since that module is only used by
+    // loader and pm, which we HLEed, we can just directly use it here
+    void RegisterProgramInfo(u32 process_id, u64 program_id, const std::string& filepath);
 
     std::string GetCurrentGamecardPath() const;
+
+    struct ProductInfo {
+        std::array<u8, 0x10> product_code;
+        u16_le maker_code;
+        u16_le remaster_version;
+    };
+
+    void RegisterProductInfo(u32 process_id, const ProductInfo& product_info);
+
+    bool GetProductInfo(u32 process_id, ProductInfo& out_product_info);
 
 private:
     void Initialize(Kernel::HLERequestContext& ctx);
@@ -491,6 +501,17 @@ private:
     void GetFormatInfo(Kernel::HLERequestContext& ctx);
 
     /**
+     * FS_User::GetProductInfo service function.
+     *  Inputs:
+     *      0 : 0x082E0040
+     *      1 : Process ID
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2-6 : Product info
+     */
+    void GetProductInfo(Kernel::HLERequestContext& ctx);
+
+    /**
      * FS_User::GetProgramLaunchInfo service function.
      *  Inputs:
      *      0 : 0x082F0040
@@ -581,7 +602,7 @@ private:
      *      0 : 0x08650140
      *      1 : Result of function, 0 on success, otherwise error code
      */
-    void SetSaveDataSecureValue(Kernel::HLERequestContext& ctx);
+    void ObsoletedSetSaveDataSecureValue(Kernel::HLERequestContext& ctx);
 
     /**
      * FS_User::GetSaveDataSecureValue service function.
@@ -596,6 +617,39 @@ private:
      *      2 : If Secure Value doesn't exist, 0, if it exists, 1
      *      3-4 : Secure Value
      */
+    void ObsoletedGetSaveDataSecureValue(Kernel::HLERequestContext& ctx);
+
+    void SetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx);
+
+    void GetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx);
+
+        /**
+     * FS_User::SetSaveDataSecureValue service function.
+     *  Inputs:
+     *      0 : 0x08750180
+     *      1-2 : Archive
+     *      3 : Secure Value Slot
+     *      4 : value
+     *      5 : flush
+     *  Outputs:
+     *      0 : header
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetSaveDataSecureValue(Kernel::HLERequestContext& ctx);
+
+    /**
+     * FS_User::GetSaveDataSecureValue service function.
+     *  Inputs:
+     *      0 : 0x087600C0
+     *      1-2 : Archive
+     *      2 : Secure Value slot
+     *  Outputs:
+     *      0 : Header
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : If Secure Value doesn't exist, 0, if it exists, 1
+     *      3 : unknown
+     *      4-5 : Secure Value
+     */
     void GetSaveDataSecureValue(Kernel::HLERequestContext& ctx);
 
     static ResultVal<u16> GetSpecialContentIndexFromGameCard(u64 title_id, SpecialContentType type);
@@ -609,6 +663,8 @@ private:
 
     std::unordered_map<u32, ProgramInfo> program_info_map;
     std::string current_gamecard_path;
+
+    std::unordered_map<u32, ProductInfo> product_info_map;
 
     u32 priority = -1; ///< For SetPriority and GetPriority service functions
 

@@ -670,6 +670,27 @@ void FS_USER::GetFormatInfo(Kernel::HLERequestContext& ctx) {
     rb.Push<bool>(format_info->duplicate_data != 0);
 }
 
+void FS_USER::GetProductInfo(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x82E, 1, 0);
+
+    u32 process_id = rp.Pop<u32>();
+
+    LOG_DEBUG(Service_FS, "process_id={}", process_id);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(6, 0);
+
+    ProductInfo product_info;
+    if (!GetProductInfo(process_id, product_info)) {
+        rb.Push(ResultCode(FileSys::ErrCodes::ArchiveNotMounted, ErrorModule::FS,
+                           ErrorSummary::NotFound, ErrorLevel::Status));
+        rb.Skip(5, false);
+        return;
+    }
+
+    rb.Push(RESULT_SUCCESS);
+    rb.PushRaw<ProductInfo>(product_info);
+}
+
 void FS_USER::GetProgramLaunchInfo(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
 
@@ -782,7 +803,7 @@ void FS_USER::AddSeed(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
 }
 
-void FS_USER::SetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+void FS_USER::ObsoletedSetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
     u64 value = rp.Pop<u64>();
     u32 secure_value_slot = rp.Pop<u32>();
@@ -801,7 +822,7 @@ void FS_USER::SetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
     rb.Push(RESULT_SUCCESS);
 }
 
-void FS_USER::GetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+void FS_USER::ObsoletedGetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
 
     u32 secure_value_slot = rp.Pop<u32>();
@@ -823,7 +844,85 @@ void FS_USER::GetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
     rb.Push<u64>(0);      // the secure value
 }
 
-void FS_USER::Register(u32 process_id, u64 program_id, const std::string& filepath) {
+void FS_USER::SetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x86E, 3, 0);
+    u32 secure_value_slot = rp.Pop<u32>();
+    u64 value = rp.Pop<u64>();
+
+    // TODO: Generate and Save the Secure Value
+
+    LOG_WARNING(Service_FS,
+                "(STUBBED) called, value=0x{:016x} secure_value_slot=0x{:08X}",
+                value, secure_value_slot);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    rb.Push(RESULT_SUCCESS);
+}
+
+void FS_USER::GetThisSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x86F, 1, 0);
+
+    u32 secure_value_slot = rp.Pop<u32>();
+
+    LOG_WARNING(
+        Service_FS,
+        "(STUBBED) called secure_value_slot=0x{:08X}",
+        secure_value_slot);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
+
+    rb.Push(RESULT_SUCCESS);
+
+    // TODO: Implement Secure Value Lookup & Generation
+
+    rb.Push<bool>(false); // indicates that the secure value doesn't exist
+    rb.Push<bool>(false); // looks like a boolean value, purpose unknown
+    rb.Push<u64>(0);      // the secure value
+}
+
+void FS_USER::SetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x875, 6, 0);
+    auto archive_handle = rp.PopRaw<ArchiveHandle>();
+    u32 secure_value_slot = rp.Pop<u32>();
+    u64 value = rp.Pop<u64>();
+    bool flush = rp.Pop<bool>();
+
+    // TODO: Generate and Save the Secure Value
+
+    LOG_WARNING(Service_FS,
+                "(STUBBED) called, value=0x{:016x} secure_value_slot=0x{:04X} "
+                "archive_handle=0x{:08X} flush={}",
+                value, secure_value_slot, archive_handle, flush);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    rb.Push(RESULT_SUCCESS);
+}
+
+void FS_USER::GetSaveDataSecureValue(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx, 0x876, 3, 0);
+
+    auto archive_handle = rp.PopRaw<ArchiveHandle>();
+    u32 secure_value_slot = rp.Pop<u32>();
+
+    LOG_WARNING(
+        Service_FS,
+        "(STUBBED) called secure_value_slot=0x{:08X} archive_handle=0x{:08X}",
+        secure_value_slot, archive_handle);
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(5, 0);
+
+    rb.Push(RESULT_SUCCESS);
+
+    // TODO: Implement Secure Value Lookup & Generation
+
+    rb.Push<bool>(false); // indicates that the secure value doesn't exist
+    rb.Push<bool>(false); // looks like a boolean value, purpose unknown
+    rb.Push<u64>(0);      // the secure value
+}
+
+void FS_USER::RegisterProgramInfo(u32 process_id, u64 program_id, const std::string& filepath) {
     const MediaType media_type = GetMediaTypeFromPath(filepath);
     program_info_map.insert_or_assign(process_id, ProgramInfo{program_id, media_type});
     if (media_type == MediaType::GameCard) {
@@ -833,6 +932,20 @@ void FS_USER::Register(u32 process_id, u64 program_id, const std::string& filepa
 
 std::string FS_USER::GetCurrentGamecardPath() const {
     return current_gamecard_path;
+}
+
+void FS_USER::RegisterProductInfo(u32 process_id, const ProductInfo& product_info) {
+    product_info_map.insert_or_assign(process_id, product_info);
+}
+
+bool FS_USER::GetProductInfo(u32 process_id, ProductInfo& out_product_info) {
+    auto it = product_info_map.find(process_id);
+    if (it != product_info_map.end()) {
+        out_product_info = it->second;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 ResultVal<u16> FS_USER::GetSpecialContentIndexFromGameCard(u64 title_id, SpecialContentType type) {
@@ -997,6 +1110,10 @@ FS_USER::FS_USER(Core::System& system)
         {0x0868, nullptr, "GetMediaType"},
         {0x0869, nullptr, "GetNandEraseCount"},
         {0x086A, nullptr, "ReadNandReport"},
+        {0x086E, &FS_USER::SetThisSaveDataSecureValue, "SetThisSaveDataSecureValue" },
+        {0x086F, &FS_USER::GetThisSaveDataSecureValue, "GetThisSaveDataSecureValue" },
+        {0x0875, &FS_USER::SetSaveDataSecureValue, "SetSaveDataSecureValue" },
+        {0x0876, &FS_USER::GetSaveDataSecureValue, "GetSaveDataSecureValue" },
         {0x087A, &FS_USER::AddSeed, "AddSeed"},
         {0x087D, &FS_USER::GetNumSeeds, "GetNumSeeds"},
         {0x0886, nullptr, "CheckUpdatedDat"},

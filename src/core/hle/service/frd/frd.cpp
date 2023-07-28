@@ -387,7 +387,6 @@ void Module::Interface::GetFriendPlayingGame(Kernel::HLERequestContext& ctx) {
     auto out_game_buffer = rp.PopMappedBuffer();
     ASSERT(out_game_buffer.GetSize() == count * sizeof(FriendPlayingGame));
 
-    const FriendKey* friend_keys_data = reinterpret_cast<const FriendKey*>(frd_keys.data());
     std::vector<u8> out_game_vector(count * sizeof(FriendPlayingGame), 0);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);

@@ -433,6 +433,7 @@ struct RegisterInfoPrivate {
     INSERT_PADDING_BYTES(0x28);
 };
 static_assert(sizeof(RegisterInfoPrivate) == 0xA4, "RegisterInfoPrivate is an invalid size");
+static_assert(std::is_trivial_v<RegisterInfoPrivate>, "RegisterInfoPrivate must be trivial.");
 static_assert(std::is_trivially_copyable_v<RegisterInfoPrivate>,
               "RegisterInfoPrivate must be trivially copyable.");
 

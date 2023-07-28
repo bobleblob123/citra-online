@@ -187,22 +187,6 @@ static_assert(std::is_trivially_copyable_v<MiiData>, "MiiData must be trivially 
 
 class ChecksummedMiiData {
 public:
-    ChecksummedMiiData() {
-        FixChecksum();
-    }
-    ChecksummedMiiData(const ChecksummedMiiData& data) = default;
-    ChecksummedMiiData(ChecksummedMiiData&& data) = default;
-    ChecksummedMiiData& operator=(const ChecksummedMiiData&) = default;
-    ChecksummedMiiData& operator=(ChecksummedMiiData&&) = default;
-
-    ChecksummedMiiData(const MiiData& data) : mii_data(data) {
-        FixChecksum();
-    }
-
-    ChecksummedMiiData(MiiData&& data) : mii_data(data) {
-        FixChecksum();
-    }
-
     ChecksummedMiiData& operator=(const MiiData& data) {
         mii_data = data;
         FixChecksum();
@@ -224,11 +208,6 @@ public:
     }
 
     u16 CalcChecksum();
-
-private:
-    MiiData mii_data{};
-    u16_be unknown{0};
-    u16_be crc16;
 
     void FixChecksum() {
         crc16 = CalcChecksum();

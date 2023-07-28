@@ -9,8 +9,7 @@ namespace Mii {
 
 #pragma pack(push, 1)
 // Reference: https://github.com/devkitPro/libctru/blob/master/libctru/include/3ds/mii.h
-class MiiData {
-public:
+struct MiiData {
     u8 magic; ///< Always 3?
 
     /// Mii options
@@ -215,8 +214,7 @@ public:
 
 private:
     MiiData mii_data;
-    [[maybe_unused]] INSERT_PADDING_BYTES(0x2);
-    u16_be crc16;
+    u32_be crc16;
 
     template <class Archive>
     void serialize(Archive& ar, const unsigned int) {

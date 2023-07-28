@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/serialization/base_object.hpp>
+#include <boost/serialization/binary_object.hpp>
 #include "common/bit_field.h"
 #include "common/common_types.h"
 
@@ -175,53 +176,7 @@ public:
 private:
     template <class Archive>
     void serialize(Archive& ar, const unsigned int) {
-        ar& magic;
-        ar& mii_options.raw;
-        ar& mii_pos.raw;
-        ar& console_identity.raw;
-        u64 system_id_ = system_id;
-        ar& system_id_;
-        system_id = system_id_;
-        u32 mii_id_ = mii_id;
-        ar& mii_id_;
-        mii_id = mii_id_;
-        ar& mac;
-        ar& pad;
-        u16 mii_details_ = mii_details.raw;
-        ar& mii_details_;
-        mii_details.raw = mii_details_;
-        ar& mii_name;
-        ar& height;
-        ar& width;
-        ar& face_style.raw;
-        ar& face_details.raw;
-        ar& hair_style;
-        ar& hair_details.raw;
-        u32 eye_details_ = eye_details.raw;
-        ar& eye_details_;
-        eye_details.raw = eye_details_;
-        u32 eyebrow_details_ = eyebrow_details.raw;
-        ar& eyebrow_details_;
-        eyebrow_details.raw = eyebrow_details_;
-        u16 nose_details_ = nose_details.raw;
-        ar& nose_details_;
-        nose_details.raw = nose_details_;
-        u16 mouth_details_ = mouth_details.raw;
-        ar& mouth_details_;
-        mouth_details.raw = mouth_details_;
-        u16 mustache_details_ = mustache_details.raw;
-        ar& mustache_details_;
-        mustache_details.raw = mustache_details_;
-        u16 beard_details_ = beard_details.raw;
-        ar& beard_details_;
-        beard_details.raw = beard_details_;
-        u16 glasses_details_ = glasses_details.raw;
-        ar& glasses_details_;
-        glasses_details.raw = glasses_details_;
-        u16 mole_details_ = mole_details.raw;
-        ar& mole_details_;
-        mole_details.raw = mole_details_;
-        ar& author_name;
+        ar& boost::serialization::make_binary_object(this, sizeof(MiiData));
     }
     friend class boost::serialization::access;
 };
@@ -230,9 +185,7 @@ static_assert(sizeof(MiiData) == 0x5C, "MiiData structure has incorrect size");
 
 class ChecksummedMiiData {
 public:
-    ChecksummedMiiData() {
-        FixChecksum();
-    }
+    ChecksummedMiiData() = default;
     ChecksummedMiiData(const ChecksummedMiiData& data) = default;
     ChecksummedMiiData(ChecksummedMiiData&& data) = default;
     ChecksummedMiiData& operator=(const ChecksummedMiiData&) = default;
@@ -274,15 +227,12 @@ public:
 
 private:
     MiiData mii_data{};
-    INSERT_PADDING_BYTES(0x2);
-    u16_be crc16;
+    [[maybe_unused]] INSERT_PADDING_BYTES(0x2){};
+    u16_be crc16{};
 
     template <class Archive>
     void serialize(Archive& ar, const unsigned int) {
-        ar& mii_data;
-        u16 crc16_ = crc16;
-        ar& crc16_;
-        crc16 = crc16_;
+        ar& boost::serialization::make_binary_object(this, sizeof(ChecksummedMiiData));
     }
     friend class boost::serialization::access;
 };

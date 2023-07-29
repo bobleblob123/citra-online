@@ -1,3 +1,7 @@
+// Copyright 2023 Citra Emulator Project
+// Licensed under GPLv2 or any later version
+// Refer to the license.txt file included.
+
 #pragma once
 
 #include <boost/serialization/base_object.hpp>
@@ -93,10 +97,10 @@ struct MiiData {
         BitField<0, 6, u32> style;
         BitField<6, 3, u32> color;
         BitField<9, 4, u32> scale;
-        BitField<13, 3, u32> yscale;
+        BitField<13, 3, u32> y_scale;
         BitField<16, 5, u32> rotation;
-        BitField<21, 4, u32> xspacing;
-        BitField<25, 5, u32> yposition;
+        BitField<21, 4, u32> x_spacing;
+        BitField<25, 5, u32> y_position;
     } eye_details;
 
     /// Eyebrow details
@@ -106,11 +110,11 @@ struct MiiData {
         BitField<0, 5, u32> style;
         BitField<5, 3, u32> color;
         BitField<8, 4, u32> scale;
-        BitField<12, 3, u32> yscale;
+        BitField<12, 3, u32> y_scale;
         BitField<15, 1, u32> pad;
         BitField<16, 5, u32> rotation;
-        BitField<21, 4, u32> xspacing;
-        BitField<25, 5, u32> yposition;
+        BitField<21, 4, u32> x_spacing;
+        BitField<25, 5, u32> y_position;
     } eyebrow_details;
 
     /// Nose details
@@ -119,7 +123,7 @@ struct MiiData {
 
         BitField<0, 5, u16> style;
         BitField<5, 4, u16> scale;
-        BitField<9, 5, u16> yposition;
+        BitField<9, 5, u16> y_position;
     } nose_details;
 
     /// Mouth details
@@ -129,7 +133,7 @@ struct MiiData {
         BitField<0, 6, u16> style;
         BitField<6, 3, u16> color;
         BitField<9, 4, u16> scale;
-        BitField<13, 3, u16> yscale;
+        BitField<13, 3, u16> y_scale;
     } mouth_details;
 
     /// Mustache details
@@ -148,7 +152,7 @@ struct MiiData {
         BitField<0, 3, u16> style;
         BitField<3, 3, u16> color;
         BitField<6, 4, u16> scale;
-        BitField<10, 5, u16> ypos;
+        BitField<10, 5, u16> y_pos;
     } beard_details;
 
     /// Glasses details
@@ -158,7 +162,7 @@ struct MiiData {
         BitField<0, 4, u16> style;
         BitField<4, 3, u16> color;
         BitField<7, 4, u16> scale;
-        BitField<11, 5, u16> ypos;
+        BitField<11, 5, u16> y_pos;
     } glasses_details;
 
     /// Mole details
@@ -167,8 +171,8 @@ struct MiiData {
 
         BitField<0, 1, u16> enable;
         BitField<1, 5, u16> scale;
-        BitField<6, 5, u16> xpos;
-        BitField<11, 5, u16> ypos;
+        BitField<6, 5, u16> x_pos;
+        BitField<11, 5, u16> y_pos;
     } mole_details;
 
     std::array<u16_le, 10> author_name; ///< Name of Mii's author (Encoded using UTF16)
@@ -184,7 +188,11 @@ static_assert(sizeof(MiiData) == 0x5C, "MiiData structure has incorrect size");
 static_assert(std::is_trivial_v<MiiData>, "MiiData must be trivial.");
 static_assert(std::is_trivially_copyable_v<MiiData>, "MiiData must be trivially copyable.");
 
-class ChecksummedMiiData {
+struct ChecksummedMiiData {
+private:
+    MiiData mii_data;
+    u32_be crc16;
+
 public:
     ChecksummedMiiData& operator=(const MiiData& data) {
         mii_data = data;
@@ -203,19 +211,16 @@ public:
     }
 
     bool IsChecksumValid() {
-        return crc16 == CalcChecksum();
+        return crc16 == CalculateChecksum();
     }
 
-    u16 CalcChecksum();
+    u16 CalculateChecksum();
 
     void FixChecksum() {
-        crc16 = CalcChecksum();
+        crc16 = CalculateChecksum();
     }
 
 private:
-    MiiData mii_data;
-    u32_be crc16;
-
     template <class Archive>
     void serialize(Archive& ar, const unsigned int) {
         ar& boost::serialization::make_binary_object(this, sizeof(ChecksummedMiiData));

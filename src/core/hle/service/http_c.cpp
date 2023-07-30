@@ -55,11 +55,31 @@ const ResultCode ERROR_WRONG_CERT_HANDLE = // 0xD8A0A0C9
 const ResultCode ERROR_CERT_ALREADY_SET = // 0xD8A0A03D
     ResultCode(61, ErrorModule::HTTP, ErrorSummary::InvalidState, ErrorLevel::Permanent);
 
+static std::pair<std::string, std::string> splitUrl(const std::string& url) {
+    const std::string prefix = "://";
+    const auto scheme = url.find(prefix);
+    const auto scheme_end = scheme == std::string::npos ? 0 : scheme + prefix.length();
+
+    const auto path_index = url.find("/", scheme_end);
+    std::string host;
+    std::string path;
+    if (path_index == std::string::npos) {
+        // If no path is specified after the host, set it to "/"
+        host = url;
+        path = "/";
+    } else {
+        host = url.substr(0, path_index);
+        path = url.substr(path_index);
+    }
+    return std::make_pair(host, path);
+}
+
 void Context::MakeRequest() {
     ASSERT(state == RequestState::NotStarted);
 
 #ifdef ENABLE_WEB_SERVICE
-    std::unique_ptr<httplib::Client> client = std::make_unique<httplib::Client>(url.c_str());
+    const auto& [host, path] = splitUrl(url.c_str());
+    std::unique_ptr<httplib::Client> client = std::make_unique<httplib::Client>(host);
     SSL_CTX* ctx = client->ssl_context();
     if (ctx) {
         if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
@@ -87,7 +107,7 @@ void Context::MakeRequest() {
     httplib::Request request;
     httplib::Error error;
     request.method = request_method_strings.at(method);
-    request.path = url;
+    request.path = path;
     // TODO(B3N30): Add post data body
     request.progress = [this](u64 current, u64 total) -> bool {
         // TODO(B3N30): Is there a state that shows response header are available
@@ -101,7 +121,7 @@ void Context::MakeRequest() {
     }
 
     if (!client->send(request, response, error)) {
-        LOG_ERROR(Service_HTTP, "Request failed: {}", error);
+        LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
         state = RequestState::TimedOut;
     } else {
         LOG_DEBUG(Service_HTTP, "Request successful");

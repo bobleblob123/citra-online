@@ -191,17 +191,20 @@ static_assert(std::is_trivially_copyable_v<MiiData>, "MiiData must be trivially 
 struct ChecksummedMiiData {
 private:
     MiiData mii_data;
-    u32_be crc16;
+    u16 padding;
+    u16_be crc16;
 
 public:
     ChecksummedMiiData& operator=(const MiiData& data) {
         mii_data = data;
+        padding = 0;
         FixChecksum();
         return *this;
     }
 
     ChecksummedMiiData& operator=(MiiData&& data) {
         mii_data = std::move(data);
+        padding = 0;
         FixChecksum();
         return *this;
     }

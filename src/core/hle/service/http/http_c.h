@@ -299,6 +299,17 @@ private:
     void CloseContext(Kernel::HLERequestContext& ctx);
 
     /**
+     * HTTP_C::GetDownloadSizeState service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : Total content data downloaded so far
+     *      3 : Total content size from the "Content-Length" response header
+     */
+    void GetDownloadSizeState(Kernel::HLERequestContext& ctx);
+
+    /**
      * HTTP_C::InitializeConnectionSession service function
      *  Inputs:
      *      1 : HTTP context handle
@@ -312,7 +323,7 @@ private:
     /**
      * HTTP_C::BeginRequest service function
      *  Inputs:
-     * 1 : Context handle
+     *      1 : Context handle
      *  Outputs:
      *      1 : Result of function, 0 on success, otherwise error code
      */
@@ -321,11 +332,42 @@ private:
     /**
      * HTTP_C::BeginRequestAsync service function
      *  Inputs:
-     * 1 : Context handle
+     *      1 : Context handle
      *  Outputs:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void BeginRequestAsync(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::ReceiveData service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Buffer size
+     *      3 : (OutSize<<4) | 12
+     *      4 : Output data pointer
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void ReceiveData(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::ReceiveDataTimeout service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Buffer size
+     *    3-4 : u64 nanoseconds delay
+     *      5 : (OutSize<<4) | 12
+     *      6 : Output data pointer
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void ReceiveDataTimeout(Kernel::HLERequestContext& ctx);
+
+    /**
+     * ReceiveDataImpl:
+     *  Implements ReceiveData and ReceiveDataTimeout service functions
+     */
+    void ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     /**
      * HTTP_C::AddRequestHeader service function
@@ -356,6 +398,33 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void AddPostDataAscii(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::GetResponseStatusCode service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : HTTP response status code
+     */
+    void GetResponseStatusCode(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::GetResponseStatusCode service function
+     *  Inputs:
+     *      1 : Context handle
+     *    2-3 : u64 nanoseconds timeout
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : HTTP response status code
+     */
+    void GetResponseStatusCodeTimeout(Kernel::HLERequestContext& ctx);
+
+    /**
+     * GetResponseStatusCodeImpl:
+     *  Implements GetResponseStatusCode and GetResponseStatusCodeTimeout service functions
+     */
+    void GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     /**
      * HTTP_C::SetClientCertContext service function
@@ -417,6 +486,12 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void Finalize(Kernel::HLERequestContext& ctx);
+
+    [[nodiscard]] SessionData* EnsureSessionInitialized(Kernel::HLERequestContext& ctx,
+                                                        IPC::RequestParser rp);
+
+    [[nodiscard]] bool PerformStateChecks(Kernel::HLERequestContext& ctx, IPC::RequestParser rp,
+                                          Context::Handle context_handle);
 
     void DecryptClCertA();
 

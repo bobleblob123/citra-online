@@ -868,7 +868,7 @@ void SOC_U::Accept(Kernel::HLERequestContext& ctx) {
         rb.Push(ERR_INVALID_HANDLE);
         return;
     }
-    [[maybe_unused]] const auto max_addr_len = static_cast<socklen_t>(rp.Pop<u32>());
+    const auto max_addr_len = rp.Pop<u32>();
     rp.PopPID();
     sockaddr addr;
     socklen_t addr_len = sizeof(addr);
@@ -887,6 +887,11 @@ void SOC_U::Accept(Kernel::HLERequestContext& ctx) {
     } else {
         ctr_addr = CTRSockAddr::FromPlatform(addr);
         std::memcpy(ctr_addr_buf.data(), &ctr_addr, sizeof(ctr_addr));
+    }
+
+    if (ctr_addr_buf.size() > max_addr_len) {
+        LOG_WARNING(Frontend, "CTRSockAddr is too long, truncating data.");
+        ctr_addr_buf.resize(max_addr_len);
     }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
@@ -1264,7 +1269,7 @@ void SOC_U::GetSockName(Kernel::HLERequestContext& ctx) {
         rb.Push(ERR_INVALID_HANDLE);
         return;
     }
-    [[maybe_unused]] const auto max_addr_len = rp.Pop<u32>();
+    const auto max_addr_len = rp.Pop<u32>();
     rp.PopPID();
 
     sockaddr dest_addr;
@@ -1277,6 +1282,11 @@ void SOC_U::GetSockName(Kernel::HLERequestContext& ctx) {
 
     if (ret != 0)
         ret = TranslateError(GET_ERRNO);
+
+    if (dest_addr_buff.size() > max_addr_len) {
+        LOG_WARNING(Frontend, "CTRSockAddr is too long, truncating data.");
+        dest_addr_buff.resize(max_addr_len);
+    }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);
     rb.Push(RESULT_SUCCESS);
@@ -1358,7 +1368,7 @@ void SOC_U::GetPeerName(Kernel::HLERequestContext& ctx) {
         rb.Push(ERR_INVALID_HANDLE);
         return;
     }
-    [[maybe_unused]] const auto max_addr_len = rp.Pop<u32>();
+    const auto max_addr_len = rp.Pop<u32>();
     rp.PopPID();
 
     sockaddr dest_addr;
@@ -1372,6 +1382,11 @@ void SOC_U::GetPeerName(Kernel::HLERequestContext& ctx) {
     int result = 0;
     if (ret != 0) {
         result = TranslateError(GET_ERRNO);
+    }
+
+    if (dest_addr_buff.size() > max_addr_len) {
+        LOG_WARNING(Frontend, "CTRSockAddr is too long, truncating data.");
+        dest_addr_buff.resize(max_addr_len);
     }
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 2);

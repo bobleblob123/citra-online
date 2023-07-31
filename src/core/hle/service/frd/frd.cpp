@@ -17,7 +17,7 @@
 #include "core/hle/service/frd/frd_a.h"
 #include "core/hle/service/frd/frd_u.h"
 #include "core/hle/service/fs/fs_user.h"
-#include "core/hle/service/http_c.h"
+#include "core/hle/service/http/http_c.h"
 #include "network/network_clients/nasc.h"
 
 SERVICE_CONSTRUCT_IMPL(Service::FRD::Module)
@@ -667,11 +667,11 @@ void Module::Interface::RequestGameAuthentication(Kernel::HLERequestContext& ctx
     nasc_client.SetParameter("action", std::string("LOGIN"));
     nasc_client.SetParameter("ingamesn", std::string(""));
 
-    LOG_INFO(Service_FRD, "Performing NASC request to: {}", nasc_url);
+    LOG_INFO(Service_FRD, "Performing NASC LOGIN request to: {}", nasc_url);
     NetworkClient::NASC::NASCClient::NASCResult nasc_result = nasc_client.Perform();
     frd->last_game_auth_data.Init();
     frd->last_game_auth_data.result = nasc_result.result;
-    if (nasc_result.result != 1) {
+    if (nasc_result.result >= 100) {
         LOG_ERROR(Service_FRD, "NASC Error: {}", nasc_result.log_message);
         if (nasc_result.result != 0) {
             frd->last_game_auth_data.http_status_code = nasc_result.http_status;
@@ -698,6 +698,153 @@ void Module::Interface::GetGameAuthenticationData(Kernel::HLERequestContext& ctx
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
     rb.PushStaticBuffer(out_auth_data, 0);
+}
+
+#pragma optimize("", off)
+void Module::Interface::RequestServiceLocator(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+    u32 gameID = rp.Pop<u32>();
+    struct KeyHash {
+        u8 raw[0xC];
+    };
+    struct Svc {
+        u8 raw[0x8];
+    };
+    KeyHash key_hash = rp.PopRaw<KeyHash>();
+    Svc svc = rp.PopRaw<Svc>();
+    std::string key_hash_str(reinterpret_cast<char*>(&key_hash));
+    std::string svc_str(reinterpret_cast<char*>(&svc));
+    auto sdk_major = rp.Pop<u32>();
+    auto sdk_minor = rp.Pop<u32>();
+    auto processID = rp.PopPID();
+    auto process = frd->system.Kernel().GetProcessById(processID);
+    auto event = rp.PopObject<Kernel::Event>();
+
+    event->Signal();
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
+
+    auto http_c = HTTP::GetService(frd->system);
+
+    if (!http_c) {
+        LOG_ERROR(Service_FRD, "http:C module not found!");
+        rb.Push(ResultCode(ErrorDescription::NoData, ErrorModule::Friends,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    auto clcert = http_c->GetClCertA();
+
+    if (!clcert.init) {
+        LOG_ERROR(Service_FRD, "ClCertA missing!");
+        rb.Push(ResultCode(ErrorDescription::NoData, ErrorModule::Friends,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    if (frd->my_account_data.password[0] == '\0' || frd->my_account_data.pid_HMAC[0] == '\0') {
+        LOG_ERROR(Service_FRD, "no account data is present!");
+        rb.Push(ResultCode(ErrorDescription::NoData, ErrorModule::Friends,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+    auto fs_user =
+        Core::System::GetInstance().ServiceManager().GetService<Service::FS::FS_USER>("fs:USER");
+    Service::FS::FS_USER::ProductInfo product_info;
+
+    if (!fs_user->GetProductInfo(processID, product_info)) {
+        LOG_ERROR(Service_FRD, "no game product info is available!");
+        rb.Push(ResultCode(ErrorDescription::NoData, ErrorModule::Friends,
+                           ErrorSummary::InvalidState, ErrorLevel::Status));
+        return;
+    }
+
+    std::string nasc_url =
+        std::string(reinterpret_cast<char*>(frd->my_account_data.nasc_url.data()));
+    NetworkClient::NASC::NASCClient nasc_client(nasc_url, clcert.certificate, clcert.private_key);
+    nasc_client.SetParameter("gameid", fmt::format("{:08X}", gameID));
+    nasc_client.SetParameter("sdkver", fmt::format("{:03d}{:03d}", (u8)sdk_major, (u8)sdk_minor));
+    nasc_client.SetParameter("titleid", fmt::format("{:016X}", process->codeset->program_id));
+    nasc_client.SetParameter(
+        "gamecd", std::string(reinterpret_cast<char*>(product_info.product_code.data() + 6)));
+    nasc_client.SetParameter("gamever", fmt::format("{:04X}", product_info.remaster_version));
+    nasc_client.SetParameter("mediatype", 1);
+    char makercd[3];
+    makercd[0] = (product_info.maker_code >> 8);
+    makercd[1] = (product_info.maker_code & 0xFF);
+    makercd[2] = '\0';
+    nasc_client.SetParameter("makercd", std::string(makercd));
+    nasc_client.SetParameter("unitcd", (int)frd->my_account_data.my_profile.platform);
+    const u8* mac = frd->my_account_data.mac_address.data();
+    nasc_client.SetParameter("macadr", fmt::format("{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}", mac[0],
+                                                   mac[1], mac[2], mac[3], mac[4], mac[5]));
+    nasc_client.SetParameter("bssid", std::string("000000000000"));
+    nasc_client.SetParameter("apinfo", std::string("01:0000000000"));
+
+    {
+        time_t raw_time;
+        struct tm* time_info;
+        char time_buffer[80];
+
+        time(&raw_time);
+        time_info = localtime(&raw_time);
+
+        strftime(time_buffer, sizeof(time_buffer), "%y%m%d%H%M%S", time_info);
+        nasc_client.SetParameter("devtime", std::string(time_buffer));
+    }
+
+    std::vector<u8> device_cert(sizeof(frd->my_account_data.device_cert));
+    memcpy(device_cert.data(), frd->my_account_data.device_cert.data(), device_cert.size());
+    nasc_client.SetParameter("fcdcert", device_cert);
+    auto device_name = Common::UTF16ToUTF8(
+        reinterpret_cast<char16_t*>(frd->my_account_data.device_name.user_name.data()));
+    nasc_client.SetParameter("devname", device_name);
+    nasc_client.SetParameter("servertype", std::string("L1"));
+    nasc_client.SetParameter("fpdver", fmt::format("{:04X}", Module::fpd_version));
+    nasc_client.SetParameter("lang",
+                             fmt::format("{:02X}", frd->my_account_data.my_profile.language));
+    nasc_client.SetParameter("region",
+                             fmt::format("{:02X}", frd->my_account_data.my_profile.region));
+    nasc_client.SetParameter("csnum", std::string(frd->my_account_data.serial_number.data()));
+    nasc_client.SetParameter("uidhmac", std::string(frd->my_account_data.pid_HMAC.data()));
+    nasc_client.SetParameter("userid", (int)frd->my_account_data.my_key.friend_id);
+    nasc_client.SetParameter("action", std::string("SVCLOC"));
+    nasc_client.SetParameter("keyhash", key_hash_str);
+    nasc_client.SetParameter("svc", svc_str);
+
+    LOG_INFO(Service_FRD, "Performing NASC SVCLOC request to: {}", nasc_url);
+    NetworkClient::NASC::NASCClient::NASCResult nasc_result = nasc_client.Perform();
+    frd->last_service_locator_data.Init();
+    frd->last_service_locator_data.result = nasc_result.result;
+    if (nasc_result.result >= 100) {
+        LOG_ERROR(Service_FRD, "NASC Error: {}", nasc_result.log_message);
+        if (nasc_result.result != 0) {
+            frd->last_service_locator_data.http_status_code = nasc_result.http_status;
+        }
+    } else {
+        frd->last_service_locator_data.http_status_code = nasc_result.http_status;
+        strncpy(frd->last_service_locator_data.service_token.data(),
+                nasc_result.service_token.c_str(),
+                sizeof(frd->last_service_locator_data.service_token) - 1);
+        strncpy(frd->last_service_locator_data.service_host.data(),
+                nasc_result.service_host.c_str(),
+                sizeof(frd->last_service_locator_data.service_host) - 1);
+        frd->last_service_locator_data.status = nasc_result.service_status;
+        frd->last_service_locator_data.server_time = nasc_result.time_stamp;
+    }
+
+    rb.Push(RESULT_SUCCESS);
+}
+#pragma optimize("", on)
+
+void Module::Interface::GetServiceLocatorData(Kernel::HLERequestContext& ctx) {
+    IPC::RequestParser rp(ctx);
+
+    std::vector<u8> out_service_data(sizeof(ServiceLocatorData));
+    memcpy(out_service_data.data(), &frd->last_service_locator_data, sizeof(ServiceLocatorData));
+
+    IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
+    rb.Push(RESULT_SUCCESS);
+    rb.PushStaticBuffer(out_service_data, 0);
 }
 
 void Module::Interface::SetClientSdkVersion(Kernel::HLERequestContext& ctx) {

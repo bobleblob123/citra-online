@@ -18,10 +18,16 @@ public:
         int http_status;
         std::string log_message;
 
+        // LOGIN
         std::string server_address;
         u16 server_port;
         std::string auth_token;
         u64 time_stamp;
+
+        // SVCLOC
+        std::string service_token;
+        std::string service_host;
+        u8 service_status;
     };
 
     NASCClient(const std::string& url, const std::vector<u8>& cert, const std::vector<u8>& key)

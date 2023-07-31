@@ -18,7 +18,7 @@
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/result.h"
-#include "core/hle/service/soc_u.h"
+#include "core/hle/service/soc/soc_u.h"
 
 #ifdef _WIN32
 #include <winsock2.h>

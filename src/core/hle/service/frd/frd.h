@@ -149,6 +149,33 @@ private:
     friend class boost::serialization::access;
 };
 
+struct ServiceLocatorData {
+    s32_le result{};
+    s32_le http_status_code{};
+    std::array<char, 256> service_token{};
+    u8 status;
+    std::array<char, 128> service_host{};
+    std::array<char, 7> padding;
+    u64_le server_time{};
+
+    void Init() {
+        memset(this, 0, sizeof(*this));
+    }
+
+private:
+    template <class Archive>
+    void serialize(Archive& ar, const unsigned int) {
+        ar& result;
+        ar& http_status_code;
+        ar& service_token;
+        ar& status;
+        ar& service_host;
+        ar& padding;
+        ar& server_time;
+    }
+    friend class boost::serialization::access;
+};
+
 struct UserNameData {
     std::array<u16_le, 11> user_name{};
     u8 is_bad_word{};
@@ -483,6 +510,10 @@ public:
 
         void GetGameAuthenticationData(Kernel::HLERequestContext& ctx);
 
+        void RequestServiceLocator(Kernel::HLERequestContext& ctx);
+
+        void GetServiceLocatorData(Kernel::HLERequestContext& ctx);
+
         /**
          * FRD::SetClientSdkVersion service function
          *  Inputs:
@@ -499,6 +530,7 @@ public:
 private:
     AccountDataV1 my_account_data;
     GameAuthenticationData last_game_auth_data{};
+    ServiceLocatorData last_service_locator_data{};
     MyPresence my_presence{};
 
     Core::System& system;

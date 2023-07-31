@@ -62,6 +62,8 @@ NASCClient::NASCResult NASCClient::Perform() {
     }
 
     std::string header_param;
+    std::string action;
+    GetParameter(parameters, "action", action);
 
     if (GetParameter(parameters, "gameid", header_param)) {
         request.set_header("X-GameId", header_param);
@@ -110,36 +112,59 @@ NASCClient::NASCResult NASCClient::Perform() {
     }
 
     res.result = static_cast<u8>(nasc_result);
-    if (nasc_result != 1) {
+    if (nasc_result >= 100) {
         res.log_message = fmt::format("NASC login failed with code 002-{:04d}", nasc_result);
         return res;
     }
 
-    std::string locator;
-    if (!GetParameter(out_parameters, "locator", locator)) {
-        res.log_message = "NASC response missing \"locator\"";
-        return res;
-    }
+    if (action == "LOGIN") {
+        std::string locator;
+        if (!GetParameter(out_parameters, "locator", locator)) {
+            res.log_message = "NASC response missing \"locator\"";
+            return res;
+        }
 
-    auto delimiter = locator.find(":");
-    if (delimiter == locator.npos) {
-        res.log_message = "NASC response \"locator\" missing port delimiter";
-        return res;
-    }
-    res.server_address = locator.substr(0, delimiter);
-    std::string port_str = locator.substr(delimiter + 1);
-    try {
-        res.server_port = (u16)std::stoi(port_str);
-    } catch (std::exception) {
-    }
+        auto delimiter = locator.find(":");
+        if (delimiter == locator.npos) {
+            res.log_message = "NASC response \"locator\" missing port delimiter";
+            return res;
+        }
+        res.server_address = locator.substr(0, delimiter);
+        std::string port_str = locator.substr(delimiter + 1);
+        try {
+            res.server_port = (u16)std::stoi(port_str);
+        } catch (std::exception) {
+        }
 
-    auto token = out_parameters.find("token");
-    if (token == out_parameters.end()) {
-        res.log_message = "NASC response missing \"locator\"";
-        return res;
-    }
+        auto token = out_parameters.find("token");
+        if (token == out_parameters.end()) {
+            res.log_message = "NASC response missing \"locator\"";
+            return res;
+        }
 
-    res.auth_token = token->second;
+        res.auth_token = token->second;
+    } else if (action == "SVCLOC") {
+        auto token = out_parameters.find("servicetoken");
+        if (token == out_parameters.end()) {
+            res.log_message = "NASC response missing \"servicetoken\"";
+            return res;
+        }
+        res.service_token = token->second;
+
+        std::string status;
+        if (!GetParameter(out_parameters, "statusdata", status)) {
+            res.log_message = "NASC response missing \"statusdata\"";
+            return res;
+        }
+        res.service_status = status[0];
+
+        std::string svc_host;
+        if (!GetParameter(out_parameters, "svchost", svc_host)) {
+            res.log_message = "NASC response missing \"svchost\"";
+            return res;
+        }
+        res.service_host = svc_host;
+    }
 
     long long server_time;
     if (!GetParameter(out_parameters, "datetime", server_time)) {

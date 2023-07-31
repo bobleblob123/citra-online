@@ -245,6 +245,8 @@ add_library(citra_core STATIC
     hle/service/cam/cam_s.h
     hle/service/cam/cam_u.cpp
     hle/service/cam/cam_u.h
+    hle/service/cam/y2r_u.cpp
+    hle/service/cam/y2r_u.h
     hle/service/cecd/cecd.cpp
     hle/service/cecd/cecd.h
     hle/service/cecd/cecd_ndm.cpp
@@ -423,8 +425,6 @@ add_library(citra_core STATIC
     hle/service/soc/soc_u.h
     hle/service/ssl/ssl_c.cpp
     hle/service/ssl/ssl_c.h
-    hle/service/y2r/y2r_u.cpp
-    hle/service/y2r/y2r_u.h
     hw/aes/arithmetic128.cpp
     hw/aes/arithmetic128.h
     hw/aes/ccm.cpp

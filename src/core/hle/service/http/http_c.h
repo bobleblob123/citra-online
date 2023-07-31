@@ -354,6 +354,12 @@ private:
     void ReceiveDataTimeout(Kernel::HLERequestContext& ctx);
 
     /**
+     * ReceiveDataImpl:
+     *  Implements ReceiveData and ReceiveDataTimeout service functions
+     */
+    void ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout);
+
+    /**
      * HTTP_C::AddRequestHeader service function
      *  Inputs:
      * 1 : Context handle
@@ -403,6 +409,12 @@ private:
      *      2 : HTTP response status code
      */
     void GetResponseStatusCodeTimeout(Kernel::HLERequestContext& ctx);
+
+    /**
+     * GetResponseStatusCodeImpl:
+     *  Implements GetResponseStatusCode and GetResponseStatusCodeTimeout service functions
+     */
+    void GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     /**
      * HTTP_C::SetClientCertContext service function
@@ -464,6 +476,12 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void Finalize(Kernel::HLERequestContext& ctx);
+
+    [[nodiscard]] SessionData* EnsureSessionInitialized(Kernel::HLERequestContext& ctx,
+                                                        IPC::RequestParser rp);
+
+    [[nodiscard]] bool PerformStateChecks(Kernel::HLERequestContext& ctx, IPC::RequestParser rp,
+                                          Context::Handle context_handle);
 
     void DecryptClCertA();
 

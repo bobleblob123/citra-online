@@ -277,8 +277,8 @@ add_library(citra_core STATIC
     hle/service/dlp/dlp_srvr.h
     hle/service/dsp/dsp_dsp.cpp
     hle/service/dsp/dsp_dsp.h
-    hle/service/err_f.cpp
-    hle/service/err_f.h
+    hle/service/err/err_f.cpp
+    hle/service/err/err_f.h
     hle/service/frd/frd.cpp
     hle/service/frd/frd.h
     hle/service/frd/frd_a.cpp
@@ -305,8 +305,8 @@ add_library(citra_core STATIC
     hle/service/hid/hid_spvr.h
     hle/service/hid/hid_user.cpp
     hle/service/hid/hid_user.h
-    hle/service/http_c.cpp
-    hle/service/http_c.h
+    hle/service/http/http_c.cpp
+    hle/service/http/http_c.h
     hle/service/ir/extra_hid.cpp
     hle/service/ir/extra_hid.h
     hle/service/ir/ir.cpp
@@ -321,8 +321,8 @@ add_library(citra_core STATIC
     hle/service/ldr_ro/cro_helper.h
     hle/service/ldr_ro/ldr_ro.cpp
     hle/service/ldr_ro/ldr_ro.h
-    hle/service/mic_u.cpp
-    hle/service/mic_u.h
+    hle/service/mic/mic_u.cpp
+    hle/service/mic/mic_u.h
     hle/service/mvd/mvd.cpp
     hle/service/mvd/mvd.h
     hle/service/mvd/mvd_std.cpp
@@ -419,12 +419,12 @@ add_library(citra_core STATIC
     hle/service/sm/sm.h
     hle/service/sm/srv.cpp
     hle/service/sm/srv.h
-    hle/service/soc_u.cpp
-    hle/service/soc_u.h
-    hle/service/ssl_c.cpp
-    hle/service/ssl_c.h
-    hle/service/y2r_u.cpp
-    hle/service/y2r_u.h
+    hle/service/soc/soc_u.cpp
+    hle/service/soc/soc_u.h
+    hle/service/ssl/ssl_c.cpp
+    hle/service/ssl/ssl_c.h
+    hle/service/y2r/y2r_u.cpp
+    hle/service/y2r/y2r_u.h
     hw/aes/arithmetic128.cpp
     hw/aes/arithmetic128.h
     hw/aes/ccm.cpp

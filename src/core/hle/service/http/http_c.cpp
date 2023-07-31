@@ -15,7 +15,7 @@
 #include "core/hle/kernel/ipc.h"
 #include "core/hle/romfs.h"
 #include "core/hle/service/fs/archive.h"
-#include "core/hle/service/http_c.h"
+#include "core/hle/service/http/http_c.h"
 #include "core/hw/aes/key.h"
 
 SERIALIZE_EXPORT_IMPL(Service::HTTP::HTTP_C)
@@ -1024,7 +1024,7 @@ void HTTP_C::GetDownloadSizeState(Kernel::HLERequestContext& ctx) {
     // length if the download is complete and 0 otherwise.
     u32 content_length = 0;
     const bool is_complete = itr->second.request_future.wait_for(std::chrono::milliseconds(0)) ==
-                          std::future_status::ready;
+                             std::future_status::ready;
     if (is_complete) {
         const auto& headers = itr->second.response.headers;
         const auto& it = headers.find("Content-Length");

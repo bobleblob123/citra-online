@@ -26,6 +26,10 @@ namespace Core {
 class System;
 }
 
+namespace FileUtil {
+class IOFile;
+}
+
 namespace Service::FS {
 enum class MediaType : u32;
 }
@@ -96,6 +100,7 @@ private:
     FileSys::CIAContainer container;
     std::vector<u8> data;
     std::vector<u64> content_written;
+    std::vector<FileUtil::IOFile> content_files;
     Service::FS::MediaType media_type;
 
     class DecryptionState;
@@ -117,6 +122,13 @@ InstallStatus InstallCIA(const std::string& path,
  * @returns  whether the install was successful or error code
  */
 InstallStatus InstallFromNus(u64 title_id, int version = -1);
+
+/**
+ * Get the update title ID for a title
+ * @param titleId the title ID
+ * @returns The update title ID
+ */
+u64 GetTitleUpdateId(u64 title_id);
 
 /**
  * Get the mediatype for an installed title

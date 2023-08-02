@@ -242,6 +242,12 @@ public:
     void WakeAfterDelay(s64 nanoseconds);
 
     /**
+     * Schedules an event to wake up the specified thread after the specified delay, thread safe
+     * @param nanoseconds The time this thread will be allowed to sleep for
+     */
+    void WakeAfterDelayTS(s64 nanoseconds);
+
+    /**
      * Sets the result after the thread awakens (from either WaitSynchronization SVC)
      * @param result Value to set to the returned result
      */

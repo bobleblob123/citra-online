@@ -301,7 +301,7 @@ std::pair<int, int> SOC_U::TranslateSockOpt(int level, int opt) {
     return std::make_pair(SOL_SOCKET, opt);
 }
 
-static void TranslateSockOptDataToPlatform(std::vector<u8>& out, const std::vector<u8>& in,
+void SOC_U::TranslateSockOptDataToPlatform(std::vector<u8>& out, const std::vector<u8>& in,
                                            int platform_level, int platform_opt) {
     // linger structure may be different between 3DS and platform
     if (platform_level == SOL_SOCKET && platform_opt == SO_LINGER &&
@@ -330,6 +330,10 @@ static void TranslateSockOptDataToPlatform(std::vector<u8>& out, const std::vect
             in.size(), platform_level, platform_opt);
         out = in;
         return;
+    }
+    // Setting TTL to 0 means resetting it to the default value.
+    if (platform_level == IPPROTO_IP && platform_opt == IP_TTL && value == 0) {
+        value = SOC_TTL_DEFAULT;
     }
     out.resize(sizeof(int));
     std::memcpy(out.data(), &value, sizeof(int));
@@ -1085,57 +1089,89 @@ void SOC_U::RecvFromOther(Kernel::HLERequestContext& ctx) {
 #endif // _WIN32
     u32 addr_len = rp.Pop<u32>();
     rp.PopPID();
-    auto& buffer = rp.PopMappedBuffer();
 
-    CTRSockAddr ctr_src_addr;
-    std::vector<u8> output_buff(len);
-    std::vector<u8> addr_buff(addr_len);
-    sockaddr src_addr;
-    socklen_t src_addr_len = sizeof(src_addr);
-
-    s32 ret = -1;
-    if (GetSocketBlocking(fd_info->second) && !dont_wait) {
-        PreTimerAdjust();
-    }
-
-    if (addr_len > 0) {
-        ret = ::recvfrom(fd_info->second.socket_fd, reinterpret_cast<char*>(output_buff.data()),
-                         len, flags, &src_addr, &src_addr_len);
-        if (ret >= 0 && src_addr_len > 0) {
-            ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
-            std::memcpy(addr_buff.data(), &ctr_src_addr, addr_len);
-        }
-    } else {
-        ret = ::recvfrom(fd_info->second.socket_fd, reinterpret_cast<char*>(output_buff.data()),
-                         len, flags, NULL, 0);
-        addr_buff.resize(0);
-    }
-    int recv_error = (ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;
-    if (GetSocketBlocking(fd_info->second) && !dont_wait) {
-        PostTimerAdjust(ctx, "RecvFromOther");
-    }
+    bool needs_parallel = GetSocketBlocking(fd_info->second) && !dont_wait;
+    struct ParallelData {
+        SOC_U* own{};
+        Kernel::MappedBuffer buffer;
+        s32 ret{};
+        u32 len{};
+        u32 flags{};
+        u32 addr_len{};
+        std::vector<u8> output_buff;
+        std::vector<u8> addr_buff;
+        SocketHolder& fd_info;
 #ifdef _WIN32
-    if (dont_wait && was_blocking) {
-        SetSocketBlocking(fd_info->second, true);
-    }
+        bool dont_wait;
 #endif
-    if (ret == SOCKET_ERROR_VALUE) {
-        ret = TranslateError(recv_error);
-    } else {
-        buffer.Write(output_buff.data(), 0, ret);
-    }
+        bool was_blocking;
+        int recv_error;
+        ParallelData(const Kernel::MappedBuffer& buf, SocketHolder& fd)
+            : buffer(buf), fd_info(fd) {}
+    };
 
-    IPC::RequestBuilder rb = rp.MakeBuilder(2, 4);
-    rb.Push(RESULT_SUCCESS);
-    rb.Push(ret);
-    rb.PushStaticBuffer(std::move(addr_buff), 0);
-    rb.PushMappedBuffer(buffer);
+    auto parallel_data = std::make_shared<ParallelData>(rp.PopMappedBuffer(), fd_info->second);
+    parallel_data->own = this;
+    parallel_data->ret = -1;
+    parallel_data->len = len;
+    parallel_data->flags = flags;
+    parallel_data->addr_len = addr_len;
+    parallel_data->output_buff.resize(len);
+    parallel_data->addr_buff.resize(addr_len);
+    parallel_data->was_blocking = was_blocking;
+#ifdef _WIN32
+    parallel_data->dont_wait = dont_wait;
+#endif
+
+    ctx.RunAsync(
+        [parallel_data](Kernel::HLERequestContext& ctx) {
+            sockaddr src_addr;
+            socklen_t src_addr_len = sizeof(src_addr);
+            CTRSockAddr ctr_src_addr;
+            if (parallel_data->addr_len > 0) {
+                parallel_data->ret =
+                    ::recvfrom(parallel_data->fd_info.socket_fd,
+                               reinterpret_cast<char*>(parallel_data->output_buff.data()),
+                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len);
+                if (parallel_data->ret >= 0 && src_addr_len > 0) {
+                    ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
+                    std::memcpy(parallel_data->addr_buff.data(), &ctr_src_addr,
+                                parallel_data->addr_len);
+                }
+            } else {
+                parallel_data->ret =
+                    ::recvfrom(parallel_data->fd_info.socket_fd,
+                               reinterpret_cast<char*>(parallel_data->output_buff.data()),
+                               parallel_data->len, parallel_data->flags, NULL, 0);
+                parallel_data->addr_buff.resize(0);
+            }
+            parallel_data->recv_error = (parallel_data->ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;
+            return 0;
+        },
+        [parallel_data](Kernel::HLERequestContext& ctx) {
+            if (parallel_data->ret == SOCKET_ERROR_VALUE) {
+                parallel_data->ret = TranslateError(parallel_data->recv_error);
+            } else {
+                parallel_data->buffer.Write(parallel_data->output_buff.data(), 0,
+                                            parallel_data->ret);
+            }
+
+#ifdef _WIN32
+            if (parallel_data->dont_wait && parallel_data->was_blocking) {
+                parallel_data->own->SetSocketBlocking(parallel_data->fd_info, true);
+            }
+#endif
+
+            IPC::RequestBuilder rb(ctx, 0x07, 2, 4);
+            rb.Push(RESULT_SUCCESS);
+            rb.Push(parallel_data->ret);
+            rb.PushStaticBuffer(std::move(parallel_data->addr_buff), 0);
+            rb.PushMappedBuffer(parallel_data->buffer);
+        },
+        needs_parallel);
 }
 
 void SOC_U::RecvFrom(Kernel::HLERequestContext& ctx) {
-    // TODO(Subv): Calling this function on a blocking socket will block the emu thread,
-    // preventing graceful shutdown when closing the emulator, this can be fixed by always
-    // performing nonblocking operations and spinlock until the data is available
     IPC::RequestParser rp(ctx);
     u32 socket_handle = rp.Pop<u32>();
     auto fd_info = open_sockets.find(socket_handle);
@@ -1162,53 +1198,86 @@ void SOC_U::RecvFrom(Kernel::HLERequestContext& ctx) {
     u32 addr_len = rp.Pop<u32>();
     rp.PopPID();
 
-    CTRSockAddr ctr_src_addr;
-    std::vector<u8> output_buff(len);
-    std::vector<u8> addr_buff(addr_len);
-    sockaddr src_addr;
-    socklen_t src_addr_len = sizeof(src_addr);
-
-    s32 ret = -1;
-    if (GetSocketBlocking(fd_info->second) && !dont_wait) {
-        PreTimerAdjust();
-    }
-    if (addr_len > 0) {
-        // Only get src adr if input adr available
-        ret = ::recvfrom(fd_info->second.socket_fd, reinterpret_cast<char*>(output_buff.data()),
-                         len, flags, &src_addr, &src_addr_len);
-        if (ret >= 0 && src_addr_len > 0) {
-            ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
-            std::memcpy(addr_buff.data(), &ctr_src_addr, addr_len);
-        }
-    } else {
-        ret = ::recvfrom(fd_info->second.socket_fd, reinterpret_cast<char*>(output_buff.data()),
-                         len, flags, NULL, 0);
-        addr_buff.resize(0);
-    }
-    int recv_error = (ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;
-    if (GetSocketBlocking(fd_info->second) && !dont_wait) {
-        PostTimerAdjust(ctx, "RecvFrom");
-    }
+    bool needs_parallel = GetSocketBlocking(fd_info->second) && !dont_wait;
+    struct ParallelData {
+        SOC_U* own;
+        s32 ret{};
+        u32 len{};
+        u32 flags{};
+        u32 addr_len{};
+        std::vector<u8> output_buff;
+        std::vector<u8> addr_buff;
+        SocketHolder& fd_info;
 #ifdef _WIN32
-    if (dont_wait && was_blocking) {
-        SetSocketBlocking(fd_info->second, true);
-    }
+        bool dont_wait;
 #endif
-    s32 total_received = ret;
-    if (ret == SOCKET_ERROR_VALUE) {
-        ret = TranslateError(recv_error);
-        total_received = 0;
-    }
+        bool was_blocking;
+        int recv_error;
+        ParallelData(SocketHolder& fd) : fd_info(fd) {}
+    };
 
-    // Write only the data we received to avoid overwriting parts of the buffer with zeros
-    output_buff.resize(total_received);
+    auto parallel_data = std::make_shared<ParallelData>(fd_info->second);
+    parallel_data->own = this;
+    parallel_data->ret = -1;
+    parallel_data->len = len;
+    parallel_data->flags = flags;
+    parallel_data->addr_len = addr_len;
+    parallel_data->output_buff.resize(len);
+    parallel_data->addr_buff.resize(addr_len);
+    parallel_data->was_blocking = was_blocking;
+#ifdef _WIN32
+    parallel_data->dont_wait = dont_wait;
+#endif
 
-    IPC::RequestBuilder rb = rp.MakeBuilder(3, 4);
-    rb.Push(RESULT_SUCCESS);
-    rb.Push(ret);
-    rb.Push(total_received);
-    rb.PushStaticBuffer(std::move(output_buff), 0);
-    rb.PushStaticBuffer(std::move(addr_buff), 1);
+    ctx.RunAsync(
+        [parallel_data](Kernel::HLERequestContext& ctx) {
+            sockaddr src_addr;
+            socklen_t src_addr_len = sizeof(src_addr);
+            CTRSockAddr ctr_src_addr;
+            if (parallel_data->addr_len > 0) {
+                // Only get src adr if input adr available
+                parallel_data->ret =
+                    ::recvfrom(parallel_data->fd_info.socket_fd,
+                               reinterpret_cast<char*>(parallel_data->output_buff.data()),
+                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len);
+                if (parallel_data->ret >= 0 && src_addr_len > 0) {
+                    ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
+                    std::memcpy(parallel_data->addr_buff.data(), &ctr_src_addr,
+                                parallel_data->addr_len);
+                }
+            } else {
+                parallel_data->ret =
+                    ::recvfrom(parallel_data->fd_info.socket_fd,
+                               reinterpret_cast<char*>(parallel_data->output_buff.data()),
+                               parallel_data->len, parallel_data->flags, NULL, 0);
+                parallel_data->addr_buff.resize(0);
+            }
+            parallel_data->recv_error = (parallel_data->ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;
+            return 0;
+        },
+        [parallel_data](Kernel::HLERequestContext& ctx) {
+#ifdef _WIN32
+            if (parallel_data->dont_wait && parallel_data->was_blocking) {
+                parallel_data->own->SetSocketBlocking(parallel_data->fd_info, true);
+            }
+#endif
+            s32 total_received = parallel_data->ret;
+            if (parallel_data->ret == SOCKET_ERROR_VALUE) {
+                parallel_data->ret = TranslateError(parallel_data->recv_error);
+                total_received = 0;
+            }
+
+            // Write only the data we received to avoid overwriting parts of the buffer with zeros
+            parallel_data->output_buff.resize(total_received);
+
+            IPC::RequestBuilder rb(ctx, 0x08, 3, 4);
+            rb.Push(RESULT_SUCCESS);
+            rb.Push(parallel_data->ret);
+            rb.Push(total_received);
+            rb.PushStaticBuffer(std::move(parallel_data->output_buff), 0);
+            rb.PushStaticBuffer(std::move(parallel_data->addr_buff), 1);
+        },
+        needs_parallel);
 }
 
 void SOC_U::Poll(Kernel::HLERequestContext& ctx) {

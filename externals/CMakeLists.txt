@@ -198,7 +198,7 @@ if (ENABLE_WEB_SERVICE)
     # httplib
     add_library(httplib INTERFACE)
     target_include_directories(httplib INTERFACE ./httplib)
-    target_compile_options(httplib INTERFACE -DCPPHTTPLIB_OPENSSL_SUPPORT)
+    target_compile_options(httplib INTERFACE -DCPPHTTPLIB_OPENSSL_SUPPORT -DCPPHTTPLIB_NO_DEFAULT_USER_AGENT)
     target_link_libraries(httplib INTERFACE ${OPENSSL_LIBRARIES})
 
     # cpp-jwt

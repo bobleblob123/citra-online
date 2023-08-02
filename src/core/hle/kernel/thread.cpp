@@ -262,6 +262,15 @@ void Thread::WakeAfterDelay(s64 nanoseconds) {
                                                thread_manager.ThreadWakeupEventType, thread_id);
 }
 
+void Thread::WakeAfterDelayTS(s64 nanoseconds) {
+    // Don't schedule a wakeup if the thread wants to wait forever
+    if (nanoseconds == -1)
+        return;
+
+    thread_manager.kernel.timing.ScheduleEventTS(
+        nsToCycles(nanoseconds), thread_manager.ThreadWakeupEventType, thread_id, core_id);
+}
+
 void Thread::ResumeFromWait() {
     ASSERT_MSG(wait_objects.empty(), "Thread is waking up while waiting for objects");
 

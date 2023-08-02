@@ -258,6 +258,10 @@ public:
                        std::uintptr_t user_data = 0,
                        std::size_t core_id = std::numeric_limits<std::size_t>::max());
 
+    void ScheduleEventTS(s64 cycles_into_future, const TimingEventType* event_type,
+                         std::uintptr_t user_data = 0,
+                         std::size_t core_id = std::numeric_limits<std::size_t>::max());
+
     void UnscheduleEvent(const TimingEventType* event_type, std::uintptr_t user_data);
 
     /// We only permit one event of each type in the queue at a time.

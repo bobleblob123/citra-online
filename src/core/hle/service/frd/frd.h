@@ -152,10 +152,10 @@ private:
 struct ServiceLocatorData {
     s32_le result{};
     s32_le http_status_code{};
+    std::array<char, 128> service_host{};
     std::array<char, 256> service_token{};
     u8 status;
-    std::array<char, 128> service_host{};
-    std::array<char, 7> padding;
+    std::array<char, 7> padding{};
     u64_le server_time{};
 
     void Init() {
@@ -170,7 +170,6 @@ private:
         ar& service_token;
         ar& status;
         ar& service_host;
-        ar& padding;
         ar& server_time;
     }
     friend class boost::serialization::access;

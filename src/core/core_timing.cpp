@@ -76,6 +76,31 @@ void Timing::ScheduleEvent(s64 cycles_into_future, const TimingEventType* event_
     }
 }
 
+void Timing::ScheduleEventTS(s64 cycles_into_future, const TimingEventType* event_type,
+                             std::uintptr_t user_data, std::size_t core_id) {
+    if (event_queue_locked) {
+        return;
+    }
+
+    ASSERT(event_type != nullptr);
+    Timing::Timer* timer = nullptr;
+    if (core_id == std::numeric_limits<std::size_t>::max()) {
+        timer = current_timer;
+    } else {
+        ASSERT(core_id < timers.size());
+        timer = timers.at(core_id).get();
+    }
+
+    // Events scheduled with this thread safe version come after blocking operations with
+    // unpredictable timings in the host machine, so there is no need to be cycle accurate.
+    // To prevent the event from scheduling before the next advance(), we set a minimum time
+    // of MAX_SLICE_LENGTH * 2 cycles into the future.
+    cycles_into_future = std::max(static_cast<s64>(MAX_SLICE_LENGTH * 2), cycles_into_future);
+
+    timer->ts_queue.Push(
+        Event{static_cast<s64>(timer->GetTicks() + cycles_into_future), 0, user_data, event_type});
+}
+
 void Timing::UnscheduleEvent(const TimingEventType* event_type, std::uintptr_t user_data) {
     if (event_queue_locked) {
         return;

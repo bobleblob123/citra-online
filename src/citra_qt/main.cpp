@@ -14,6 +14,7 @@
 #include <QtGui>
 #include <QtWidgets>
 #include <fmt/format.h>
+#include "core/telemetry_session.h"
 #ifdef __APPLE__
 #include <unistd.h> // for chdir
 #endif
@@ -73,7 +74,6 @@
 #include "common/microprofile.h"
 #include "common/scm_rev.h"
 #include "common/scope_exit.h"
-#include "common/string_util.h"
 #if CITRA_ARCH(x86_64)
 #include "common/x64/cpu_detect.h"
 #endif
@@ -173,7 +173,7 @@ static QString PrettyProductName() {
 }
 
 GMainWindow::GMainWindow(Core::System& system_)
-    : ui{std::make_unique<Ui::MainWindow>()}, system{system_}, movie{Core::Movie::GetInstance()},
+    : ui{std::make_unique<Ui::MainWindow>()}, system{system_}, movie{system.Movie()},
       config{std::make_unique<Config>()}, emu_thread{nullptr} {
     Common::Log::Initialize();
     Common::Log::Start();
@@ -353,8 +353,8 @@ void GMainWindow::InitializeWidgets() {
     });
 
     InputCommon::Init();
-    multiplayer_state = new MultiplayerState(this, game_list->GetModel(), ui->action_Leave_Room,
-                                             ui->action_Show_Room);
+    multiplayer_state = new MultiplayerState(system, this, game_list->GetModel(),
+                                             ui->action_Leave_Room, ui->action_Show_Room);
     multiplayer_state->setVisible(false);
 
 #if ENABLE_QT_UPDATER
@@ -434,7 +434,7 @@ void GMainWindow::InitializeDebugWidgets() {
     debug_menu->addAction(microProfileDialog->toggleViewAction());
 #endif
 
-    registersWidget = new RegistersWidget(this);
+    registersWidget = new RegistersWidget(system, this);
     addDockWidget(Qt::RightDockWidgetArea, registersWidget);
     registersWidget->hide();
     debug_menu->addAction(registersWidget->toggleViewAction());
@@ -448,7 +448,7 @@ void GMainWindow::InitializeDebugWidgets() {
     graphicsWidget->hide();
     debug_menu->addAction(graphicsWidget->toggleViewAction());
 
-    graphicsCommandsWidget = new GPUCommandListWidget(this);
+    graphicsCommandsWidget = new GPUCommandListWidget(system.Memory(), this);
     addDockWidget(Qt::RightDockWidgetArea, graphicsCommandsWidget);
     graphicsCommandsWidget->hide();
     debug_menu->addAction(graphicsCommandsWidget->toggleViewAction());
@@ -472,7 +472,7 @@ void GMainWindow::InitializeDebugWidgets() {
     connect(this, &GMainWindow::EmulationStopping, graphicsTracingWidget,
             &GraphicsTracingWidget::OnEmulationStopping);
 
-    waitTreeWidget = new WaitTreeWidget(this);
+    waitTreeWidget = new WaitTreeWidget(system, this);
     addDockWidget(Qt::LeftDockWidgetArea, waitTreeWidget);
     waitTreeWidget->hide();
     debug_menu->addAction(waitTreeWidget->toggleViewAction());
@@ -490,7 +490,7 @@ void GMainWindow::InitializeDebugWidgets() {
     connect(this, &GMainWindow::EmulationStopping, waitTreeWidget,
             [this] { lleServiceModulesWidget->setDisabled(false); });
 
-    ipcRecorderWidget = new IPCRecorderWidget(this);
+    ipcRecorderWidget = new IPCRecorderWidget(system, this);
     addDockWidget(Qt::RightDockWidgetArea, ipcRecorderWidget);
     ipcRecorderWidget->hide();
     debug_menu->addAction(ipcRecorderWidget->toggleViewAction());
@@ -1413,7 +1413,7 @@ void GMainWindow::UpdateSaveStates() {
     if (system.GetAppLoader().ReadProgramId(title_id) != Loader::ResultStatus::Success) {
         return;
     }
-    auto savestates = Core::ListSaveStates(title_id);
+    auto savestates = Core::ListSaveStates(title_id, movie.GetCurrentMovieID());
     for (u32 i = 0; i < Core::SaveStateSlotCount; ++i) {
         actions_load_state[i]->setEnabled(false);
         actions_load_state[i]->setText(tr("Slot %1").arg(i + 1));
@@ -2046,7 +2046,6 @@ void GMainWindow::OnLoadAmiibo() {
         return;
     }
 
-    Core::System& system{Core::System::GetInstance()};
     Service::SM::ServiceManager& sm = system.ServiceManager();
     auto nfc = sm.GetService<Service::NFC::Module::Interface>("nfc:u");
     if (nfc == nullptr) {
@@ -2118,14 +2117,15 @@ void GMainWindow::OnToggleFilterBar() {
 }
 
 void GMainWindow::OnCreateGraphicsSurfaceViewer() {
-    auto graphicsSurfaceViewerWidget = new GraphicsSurfaceWidget(Pica::g_debug_context, this);
+    auto graphicsSurfaceViewerWidget =
+        new GraphicsSurfaceWidget(system.Memory(), Pica::g_debug_context, this);
     addDockWidget(Qt::RightDockWidgetArea, graphicsSurfaceViewerWidget);
     // TODO: Maybe graphicsSurfaceViewerWidget->setFloating(true);
     graphicsSurfaceViewerWidget->show();
 }
 
 void GMainWindow::OnRecordMovie() {
-    MovieRecordDialog dialog(this);
+    MovieRecordDialog dialog(this, system);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -2142,7 +2142,7 @@ void GMainWindow::OnRecordMovie() {
 }
 
 void GMainWindow::OnPlayMovie() {
-    MoviePlayDialog dialog(this, game_list);
+    MoviePlayDialog dialog(this, game_list, system);
     if (dialog.exec() != QDialog::Accepted) {
         return;
     }
@@ -2847,7 +2847,7 @@ void GMainWindow::RetranslateStatusBar() {
 void GMainWindow::SetDiscordEnabled([[maybe_unused]] bool state) {
 #ifdef USE_DISCORD_PRESENCE
     if (state) {
-        discord_rpc = std::make_unique<DiscordRPC::DiscordImpl>();
+        discord_rpc = std::make_unique<DiscordRPC::DiscordImpl>(system);
     } else {
         discord_rpc = std::make_unique<DiscordRPC::NullImpl>();
     }

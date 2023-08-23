@@ -26,9 +26,6 @@ public:
     /// Returns true if other_surface can be used for reinterpretion.
     bool CanReinterpret(const SurfaceParams& other_surface);
 
-    /// Returns true if params can be expanded to match expanded_surface
-    bool CanExpand(const SurfaceParams& expanded_surface) const;
-
     /// Returns true if params can be used for texcopy
     bool CanTexCopy(const SurfaceParams& texcopy_params) const;
 
@@ -56,6 +53,10 @@ public:
     /// Returns a string identifier of the params object
     std::string DebugName(bool scaled, bool custom = false) const noexcept;
 
+    bool operator==(const SurfaceParams& other) const noexcept {
+        return std::memcmp(this, &other, sizeof(SurfaceParams)) == 0;
+    }
+
     [[nodiscard]] SurfaceInterval GetInterval() const noexcept {
         return SurfaceInterval{addr, end};
     }
@@ -72,12 +73,12 @@ public:
         return height * res_scale;
     }
 
-    [[nodiscard]] Common::Rectangle<u32> GetRect() const noexcept {
-        return {0, height, width, 0};
+    [[nodiscard]] Common::Rectangle<u32> GetRect(u32 level = 0) const noexcept {
+        return {0, height >> level, width >> level, 0};
     }
 
-    [[nodiscard]] Common::Rectangle<u32> GetScaledRect() const noexcept {
-        return {0, GetScaledHeight(), GetScaledWidth(), 0};
+    [[nodiscard]] Common::Rectangle<u32> GetScaledRect(u32 level = 0) const noexcept {
+        return {0, GetScaledHeight() >> level, GetScaledWidth() >> level, 0};
     }
 
     [[nodiscard]] u32 PixelsInBytes(u32 size) const noexcept {

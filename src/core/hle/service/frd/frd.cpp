@@ -6,9 +6,9 @@
 #include <cstring>
 #include <ctime>
 #include <vector>
+#include "common/archives.h"
 #include "common/assert.h"
 #include "common/logging/log.h"
-#include "common/string_util.h"
 #include "core/core.h"
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/result.h"

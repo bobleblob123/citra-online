@@ -7,14 +7,17 @@
 #include "audio_core/hle/hle.h"
 #include "audio_core/lle/lle.h"
 #include "common/common_paths.h"
+#include "common/file_util.h"
+#include "core/core.h"
 #include "core/core_timing.h"
 #include "core/memory.h"
 
 TEST_CASE("DSP LLE vs HLE", "[audio_core][hle]") {
-    Memory::MemorySystem hle_memory;
+    Core::System system;
+    Memory::MemorySystem hle_memory{system};
     Core::Timing hle_core_timing(1, 100);
 
-    Memory::MemorySystem lle_memory;
+    Memory::MemorySystem lle_memory{system};
     Core::Timing lle_core_timing(1, 100);
 
     AudioCore::DspHle hle(hle_memory, hle_core_timing);

@@ -31,9 +31,7 @@ struct RendererSettings {
     std::function<void()> screenshot_complete_callback;
     Layout::FramebufferLayout screenshot_framebuffer_layout;
     // Renderer
-    std::atomic_bool texture_filter_update_requested{false};
     std::atomic_bool bg_color_update_requested{false};
-    std::atomic_bool sampler_update_requested{false};
     std::atomic_bool shader_update_requested{false};
 };
 
@@ -44,7 +42,7 @@ public:
     virtual ~RendererBase();
 
     /// Returns the rasterizer owned by the renderer
-    virtual VideoCore::RasterizerInterface* Rasterizer() const = 0;
+    virtual VideoCore::RasterizerInterface* Rasterizer() = 0;
 
     /// Finalize rendering the guest frame and draw into the presentation texture
     virtual void SwapBuffers() = 0;
@@ -73,9 +71,6 @@ public:
 
     /// Ends the current frame
     void EndFrame();
-
-    // Getter/setter functions:
-    // ------------------------
 
     f32 GetCurrentFPS() const {
         return current_fps;

@@ -26,6 +26,7 @@
 #include "core/hle/service/nfc/nfc.h"
 #include "core/loader/loader.h"
 #include "core/savestate.h"
+#include "core/telemetry_session.h"
 #include "jni/android_common/android_common.h"
 #include "jni/applets/mii_selector.h"
 #include "jni/applets/swkbd.h"
@@ -156,7 +157,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     system.RegisterSoftwareKeyboard(std::make_shared<SoftwareKeyboard::AndroidKeyboard>());
 
     // Register microphone permission check
-    Core::System::GetInstance().RegisterMicPermissionCheck(&CheckMicPermission);
+    system.RegisterMicPermissionCheck(&CheckMicPermission);
 
     InputManager::Init();
 
@@ -166,7 +167,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
         return load_result;
     }
 
-    auto& telemetry_session = Core::System::GetInstance().TelemetrySession();
+    auto& telemetry_session = system.TelemetrySession();
     telemetry_session.AddField(Common::Telemetry::FieldType::App, "Frontend", "Android");
 
     stop_run = false;
@@ -187,8 +188,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
     audio_stretching_event =
         system.CoreTiming().RegisterEvent("AudioStretchingEvent", [&](u64, s64 cycles_late) {
             if (Settings::values.enable_audio_stretching) {
-                Core::DSP().EnableStretching(
-                    Core::System::GetInstance().GetAndResetPerfStats().emulation_speed < 0.95);
+                system.DSP().EnableStretching(system.GetAndResetPerfStats().emulation_speed < 0.95);
             }
 
             system.CoreTiming().ScheduleEvent(audio_stretching_ticks - cycles_late,
@@ -219,7 +219,7 @@ static Core::System::ResultStatus RunCitra(const std::string& filepath) {
             SCOPE_EXIT({ Settings::values.volume = volume; });
             Settings::values.volume = 0;
 
-            std::unique_lock<std::mutex> pause_lock(paused_mutex);
+            std::unique_lock pause_lock{paused_mutex};
             running_cv.wait(pause_lock, [] { return !pause_emulation || stop_run; });
             window->PollEvents();
         }
@@ -621,7 +621,7 @@ jobjectArray Java_org_citra_citra_1emu_NativeLibrary_GetSavestateInfo(
         return nullptr;
     }
 
-    const auto savestates = Core::ListSaveStates(title_id);
+    const auto savestates = Core::ListSaveStates(title_id, system.Movie().GetCurrentMovieID());
     const jobjectArray array =
         env->NewObjectArray(static_cast<jsize>(savestates.size()), savestate_info_class, nullptr);
     for (std::size_t i = 0; i < savestates.size(); ++i) {

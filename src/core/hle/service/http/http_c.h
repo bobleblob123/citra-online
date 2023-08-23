@@ -31,6 +31,10 @@ namespace Core {
 class System;
 }
 
+namespace IPC {
+class RequestParser;
+}
+
 namespace Service::HTTP {
 
 enum class RequestMethod : u8 {
@@ -361,6 +365,37 @@ private:
     void ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     void SetProxyDefault(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::ReceiveData service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Buffer size
+     *      3 : (OutSize<<4) | 12
+     *      4 : Output data pointer
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void ReceiveData(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::ReceiveDataTimeout service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Buffer size
+     *    3-4 : u64 nanoseconds delay
+     *      5 : (OutSize<<4) | 12
+     *      6 : Output data pointer
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void ReceiveDataTimeout(Kernel::HLERequestContext& ctx);
+
+    /**
+     * ReceiveDataImpl:
+     *  Implements ReceiveData and ReceiveDataTimeout service functions
+     */
+    void ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     /**
      * HTTP_C::AddRequestHeader service function

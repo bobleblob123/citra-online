@@ -342,7 +342,7 @@ if (USE_DISCORD_PRESENCE)
 endif()
 
 if (ENABLE_WEB_SERVICE)
-    target_compile_definitions(citra-qt PRIVATE -DENABLE_WEB_SERVICE)
+    target_link_libraries(citra-qt PRIVATE web_service)
 endif()
 
 if(UNIX AND NOT APPLE)

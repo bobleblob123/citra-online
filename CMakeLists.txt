@@ -57,6 +57,7 @@ CMAKE_DEPENDENT_OPTION(ENABLE_TESTS "Enable generating tests executable" ON "NOT
 CMAKE_DEPENDENT_OPTION(ENABLE_DEDICATED_ROOM "Enable generating dedicated room executable" ON "NOT ANDROID AND NOT IOS" OFF)
 
 option(ENABLE_WEB_SERVICE "Enable web services (telemetry, etc.)" ON)
+option(ENABLE_SCRIPTING "Enable RPC server for scripting" ON)
 
 CMAKE_DEPENDENT_OPTION(ENABLE_CUBEB "Enables the cubeb audio backend" ON "NOT IOS" OFF)
 option(ENABLE_OPENAL "Enables the OpenAL audio backend" ON)
@@ -67,6 +68,8 @@ option(USE_DISCORD_PRESENCE "Enables Discord Rich Presence" OFF)
 
 CMAKE_DEPENDENT_OPTION(ENABLE_MF "Use Media Foundation decoder (preferred over FFmpeg)" ON "WIN32" OFF)
 CMAKE_DEPENDENT_OPTION(ENABLE_AUDIOTOOLBOX "Use AudioToolbox decoder (preferred over FFmpeg)" ON "APPLE" OFF)
+
+CMAKE_DEPENDENT_OPTION(CITRA_ENABLE_BUNDLE_TARGET "Enable the distribution bundling target." ON "NOT ANDROID AND NOT IOS" OFF)
 
 # Compile options
 CMAKE_DEPENDENT_OPTION(COMPILE_WITH_DWARF "Add DWARF debugging information" ${IS_DEBUG_BUILD} "MINGW" OFF)
@@ -219,7 +222,7 @@ find_package(Threads REQUIRED)
 
 if (ENABLE_QT)
     if (NOT USE_SYSTEM_QT)
-        download_qt(6.5.0)
+        download_qt(6.5.1)
     endif()
 
     find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Concurrent)
@@ -341,13 +344,6 @@ function(get_timestamp _var)
     set(${_var} "${timestamp}" PARENT_SCOPE)
 endfunction()
 
-# Prevent boost from linking against libs when building
-add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY
-    -DBOOST_SYSTEM_NO_LIB
-    -DBOOST_DATE_TIME_NO_LIB
-    -DBOOST_REGEX_NO_LIB
-)
-
 # generate git/build information
 include(GetGitRevisionDescription)
 get_git_head_revision(GIT_REF_SPEC GIT_REV)
@@ -355,17 +351,23 @@ git_describe(GIT_DESC --always --long --dirty)
 git_branch_name(GIT_BRANCH)
 get_timestamp(BUILD_DATE)
 
-if (NOT USE_SYSTEM_BOOST)
-    add_definitions( -DBOOST_ALL_NO_LIB )
+# Boost
+# Prevent boost from linking against libs when building
+add_definitions(-DBOOST_ERROR_CODE_HEADER_ONLY
+    -DBOOST_SYSTEM_NO_LIB
+    -DBOOST_DATE_TIME_NO_LIB
+    -DBOOST_REGEX_NO_LIB
+)
+if (USE_SYSTEM_BOOST)
+    find_package(Boost 1.70.0 COMPONENTS container locale serialization iostreams REQUIRED)
 endif()
 
 enable_testing()
 add_subdirectory(externals)
 
-# Boost
-if (USE_SYSTEM_BOOST)
-    find_package(Boost 1.70.0 COMPONENTS serialization iostreams REQUIRED)
-else()
+# Boost (bundled)
+if (NOT USE_SYSTEM_BOOST)
+    add_definitions( -DBOOST_ALL_NO_LIB )
     add_library(Boost::boost ALIAS boost)
     add_library(Boost::serialization ALIAS boost_serialization)
     add_library(Boost::iostreams ALIAS boost_iostreams)
@@ -397,7 +399,7 @@ else()
 endif()
 
 # Create target for outputting distributable bundles.
-if (NOT ANDROID AND NOT IOS)
+if (CITRA_ENABLE_BUNDLE_TARGET)
     include(BundleTarget)
     if (ENABLE_SDL2_FRONTEND)
         bundle_target(citra)

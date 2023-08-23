@@ -12,27 +12,29 @@ include(DownloadExternals)
 include(ExternalProject)
 
 # Boost
-set(BOOST_ROOT "${CMAKE_SOURCE_DIR}/externals/boost" CACHE STRING "")
-set(Boost_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/externals/boost" CACHE STRING "")
-set(Boost_NO_SYSTEM_PATHS ON CACHE BOOL "")
-add_library(boost INTERFACE)
-target_include_directories(boost SYSTEM INTERFACE ${Boost_INCLUDE_DIR})
+if (NOT USE_SYSTEM_BOOST)
+    message(STATUS "Including vendored Boost library")
+    set(BOOST_ROOT "${CMAKE_SOURCE_DIR}/externals/boost" CACHE STRING "")
+    set(Boost_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/externals/boost" CACHE STRING "")
+    set(Boost_NO_SYSTEM_PATHS ON CACHE BOOL "")
+    add_library(boost INTERFACE)
+    target_include_directories(boost SYSTEM INTERFACE ${Boost_INCLUDE_DIR})
 
-# Boost::serialization
-file(GLOB boost_serialization_SRC "${CMAKE_SOURCE_DIR}/externals/boost/libs/serialization/src/*.cpp")
-add_library(boost_serialization STATIC ${boost_serialization_SRC})
-target_link_libraries(boost_serialization PUBLIC boost)
+    # Boost::serialization
+    file(GLOB boost_serialization_SRC "${CMAKE_SOURCE_DIR}/externals/boost/libs/serialization/src/*.cpp")
+    add_library(boost_serialization STATIC ${boost_serialization_SRC})
+    target_link_libraries(boost_serialization PUBLIC boost)
 
-# Boost::iostreams
-add_library(
-    boost_iostreams
-    STATIC
-    ${CMAKE_SOURCE_DIR}/externals/boost/libs/iostreams/src/file_descriptor.cpp
-    ${CMAKE_SOURCE_DIR}/externals/boost/libs/iostreams/src/mapped_file.cpp
-)
-target_link_libraries(boost_iostreams PUBLIC boost)
-
+    # Boost::iostreams
+    add_library(
+        boost_iostreams
+        STATIC
+        ${CMAKE_SOURCE_DIR}/externals/boost/libs/iostreams/src/file_descriptor.cpp
+        ${CMAKE_SOURCE_DIR}/externals/boost/libs/iostreams/src/mapped_file.cpp
+    )
+    target_link_libraries(boost_iostreams PUBLIC boost)
 # Add additional boost libs here; remember to ALIAS them in the root CMakeLists!
+endif()
 
 # Catch2
 set(CATCH_INSTALL_DOCS OFF CACHE BOOL "")
@@ -95,6 +97,7 @@ set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "")
 set(ENABLE_SPVREMAPPER OFF CACHE BOOL "")
 set(ENABLE_CTEST OFF CACHE BOOL "")
 set(ENABLE_HLSL OFF CACHE BOOL "")
+set(BUILD_EXTERNAL OFF CACHE BOOL "")
 add_subdirectory(glslang)
 
 # inih
@@ -171,37 +174,39 @@ endif()
 add_library(json-headers INTERFACE)
 target_include_directories(json-headers INTERFACE ./json)
 
+# OpenSSL
+if (USE_SYSTEM_OPENSSL)
+    find_package(OpenSSL 1.1)
+    if (OPENSSL_FOUND)
+        set(OPENSSL_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+    endif()
+endif()
+
+if (NOT OPENSSL_FOUND)
+    # LibreSSL
+    set(LIBRESSL_SKIP_INSTALL ON CACHE BOOL "")
+    set(OPENSSLDIR "/etc/ssl/")
+    add_subdirectory(libressl EXCLUDE_FROM_ALL)
+    target_include_directories(ssl INTERFACE ./libressl/include)
+    target_compile_definitions(ssl PRIVATE -DHAVE_INET_NTOP)
+    get_directory_property(OPENSSL_LIBRARIES
+        DIRECTORY libressl
+        DEFINITION OPENSSL_LIBS)
+endif()
+
+# httplib
+add_library(httplib INTERFACE)
+target_include_directories(httplib INTERFACE ./httplib)
+target_compile_options(httplib INTERFACE -DCPPHTTPLIB_OPENSSL_SUPPORT -DCPPHTTPLIB_NO_DEFAULT_USER_AGENT)
+target_link_libraries(httplib INTERFACE ${OPENSSL_LIBRARIES})
+
+if(ANDROID)
+    add_subdirectory(android-ifaddrs)
+    target_link_libraries(httplib INTERFACE ifaddrs)
+endif()
+
+# cpp-jwt
 if (ENABLE_WEB_SERVICE)
-    if (USE_SYSTEM_OPENSSL)
-        find_package(OpenSSL 1.1)
-        if (OPENSSL_FOUND)
-            set(OPENSSL_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
-        endif()
-    endif()
-
-    if (NOT OPENSSL_FOUND)
-        # LibreSSL
-        set(LIBRESSL_SKIP_INSTALL ON CACHE BOOL "")
-        set(OPENSSLDIR "/etc/ssl/")
-        add_subdirectory(libressl EXCLUDE_FROM_ALL)
-        target_include_directories(ssl INTERFACE ./libressl/include)
-        target_compile_definitions(ssl PRIVATE -DHAVE_INET_NTOP)
-        get_directory_property(OPENSSL_LIBRARIES
-            DIRECTORY libressl
-            DEFINITION OPENSSL_LIBS)
-    endif()
-
-    if(ANDROID)
-        add_subdirectory(android-ifaddrs)
-    endif()
-
-    # httplib
-    add_library(httplib INTERFACE)
-    target_include_directories(httplib INTERFACE ./httplib)
-    target_compile_options(httplib INTERFACE -DCPPHTTPLIB_OPENSSL_SUPPORT -DCPPHTTPLIB_NO_DEFAULT_USER_AGENT)
-    target_link_libraries(httplib INTERFACE ${OPENSSL_LIBRARIES})
-
-    # cpp-jwt
     add_library(cpp-jwt INTERFACE)
     target_include_directories(cpp-jwt INTERFACE ./cpp-jwt/include)
     target_compile_definitions(cpp-jwt INTERFACE CPP_JWT_USE_VENDORED_NLOHMANN_JSON)

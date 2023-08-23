@@ -69,6 +69,17 @@ PicaFSConfig::PicaFSConfig(const Pica::Regs& regs, const Instance& instance) {
 
     state.texture2_use_coord1.Assign(regs.texturing.main_config.texture2_use_coord1 != 0);
 
+    const auto pica_textures = regs.texturing.GetTextures();
+    for (u32 tex_index = 0; tex_index < 3; tex_index++) {
+        const auto config = pica_textures[tex_index].config;
+        state.texture_border_color[tex_index].enable_s.Assign(
+            !instance.IsCustomBorderColorSupported() &&
+            config.wrap_s == TexturingRegs::TextureConfig::WrapMode::ClampToBorder);
+        state.texture_border_color[tex_index].enable_t.Assign(
+            !instance.IsCustomBorderColorSupported() &&
+            config.wrap_t == TexturingRegs::TextureConfig::WrapMode::ClampToBorder);
+    }
+
     // Emulate logic op in the shader if not supported. This is mostly for mobile GPUs
     const bool emulate_logic_op = instance.NeedsLogicOpEmulation() &&
                                   !Pica::g_state.regs.framebuffer.output_merger.alphablend_enable;
@@ -101,79 +112,100 @@ PicaFSConfig::PicaFSConfig(const Pica::Regs& regs, const Instance& instance) {
         regs.texturing.tev_combiner_buffer_input.update_mask_a.Value() << 4);
 
     // Fragment lighting
-
     state.lighting.enable.Assign(!regs.lighting.disable);
-    state.lighting.src_num.Assign(regs.lighting.max_light_index + 1);
+    if (state.lighting.enable) {
+        state.lighting.src_num.Assign(regs.lighting.max_light_index + 1);
 
-    for (u32 light_index = 0; light_index < state.lighting.src_num; ++light_index) {
-        const u32 num = regs.lighting.light_enable.GetNum(light_index);
-        const auto& light = regs.lighting.light[num];
-        state.lighting.light[light_index].num.Assign(num);
-        state.lighting.light[light_index].directional.Assign(light.config.directional != 0);
-        state.lighting.light[light_index].two_sided_diffuse.Assign(light.config.two_sided_diffuse !=
-                                                                   0);
-        state.lighting.light[light_index].geometric_factor_0.Assign(
-            light.config.geometric_factor_0 != 0);
-        state.lighting.light[light_index].geometric_factor_1.Assign(
-            light.config.geometric_factor_1 != 0);
-        state.lighting.light[light_index].dist_atten_enable.Assign(
-            !regs.lighting.IsDistAttenDisabled(num));
-        state.lighting.light[light_index].spot_atten_enable.Assign(
-            !regs.lighting.IsSpotAttenDisabled(num));
-        state.lighting.light[light_index].shadow_enable.Assign(
-            !regs.lighting.IsShadowDisabled(num));
+        for (u32 light_index = 0; light_index < state.lighting.src_num; ++light_index) {
+            const u32 num = regs.lighting.light_enable.GetNum(light_index);
+            const auto& light = regs.lighting.light[num];
+            state.lighting.light[light_index].num.Assign(num);
+            state.lighting.light[light_index].directional.Assign(light.config.directional != 0);
+            state.lighting.light[light_index].two_sided_diffuse.Assign(
+                light.config.two_sided_diffuse != 0);
+            state.lighting.light[light_index].geometric_factor_0.Assign(
+                light.config.geometric_factor_0 != 0);
+            state.lighting.light[light_index].geometric_factor_1.Assign(
+                light.config.geometric_factor_1 != 0);
+            state.lighting.light[light_index].dist_atten_enable.Assign(
+                !regs.lighting.IsDistAttenDisabled(num));
+            state.lighting.light[light_index].spot_atten_enable.Assign(
+                !regs.lighting.IsSpotAttenDisabled(num));
+            state.lighting.light[light_index].shadow_enable.Assign(
+                !regs.lighting.IsShadowDisabled(num));
+        }
+
+        state.lighting.lut_d0.enable.Assign(regs.lighting.config1.disable_lut_d0 == 0);
+        if (state.lighting.lut_d0.enable) {
+            state.lighting.lut_d0.abs_input.Assign(regs.lighting.abs_lut_input.disable_d0 == 0);
+            state.lighting.lut_d0.type.Assign(regs.lighting.lut_input.d0.Value());
+            state.lighting.lut_d0.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.d0);
+        }
+
+        state.lighting.lut_d1.enable.Assign(regs.lighting.config1.disable_lut_d1 == 0);
+        if (state.lighting.lut_d1.enable) {
+            state.lighting.lut_d1.abs_input.Assign(regs.lighting.abs_lut_input.disable_d1 == 0);
+            state.lighting.lut_d1.type.Assign(regs.lighting.lut_input.d1.Value());
+            state.lighting.lut_d1.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.d1);
+        }
+
+        // this is a dummy field due to lack of the corresponding register
+        state.lighting.lut_sp.enable.Assign(1);
+        state.lighting.lut_sp.abs_input.Assign(regs.lighting.abs_lut_input.disable_sp == 0);
+        state.lighting.lut_sp.type.Assign(regs.lighting.lut_input.sp.Value());
+        state.lighting.lut_sp.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.sp);
+
+        state.lighting.lut_fr.enable.Assign(regs.lighting.config1.disable_lut_fr == 0);
+        if (state.lighting.lut_fr.enable) {
+            state.lighting.lut_fr.abs_input.Assign(regs.lighting.abs_lut_input.disable_fr == 0);
+            state.lighting.lut_fr.type.Assign(regs.lighting.lut_input.fr.Value());
+            state.lighting.lut_fr.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.fr);
+        }
+
+        state.lighting.lut_rr.enable.Assign(regs.lighting.config1.disable_lut_rr == 0);
+        if (state.lighting.lut_rr.enable) {
+            state.lighting.lut_rr.abs_input.Assign(regs.lighting.abs_lut_input.disable_rr == 0);
+            state.lighting.lut_rr.type.Assign(regs.lighting.lut_input.rr.Value());
+            state.lighting.lut_rr.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rr);
+        }
+
+        state.lighting.lut_rg.enable.Assign(regs.lighting.config1.disable_lut_rg == 0);
+        if (state.lighting.lut_rg.enable) {
+            state.lighting.lut_rg.abs_input.Assign(regs.lighting.abs_lut_input.disable_rg == 0);
+            state.lighting.lut_rg.type.Assign(regs.lighting.lut_input.rg.Value());
+            state.lighting.lut_rg.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rg);
+        }
+
+        state.lighting.lut_rb.enable.Assign(regs.lighting.config1.disable_lut_rb == 0);
+        if (state.lighting.lut_rb.enable) {
+            state.lighting.lut_rb.abs_input.Assign(regs.lighting.abs_lut_input.disable_rb == 0);
+            state.lighting.lut_rb.type.Assign(regs.lighting.lut_input.rb.Value());
+            state.lighting.lut_rb.scale =
+                regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rb);
+        }
+
+        state.lighting.config.Assign(regs.lighting.config0.config);
+        state.lighting.enable_primary_alpha.Assign(regs.lighting.config0.enable_primary_alpha);
+        state.lighting.enable_secondary_alpha.Assign(regs.lighting.config0.enable_secondary_alpha);
+        state.lighting.bump_mode.Assign(regs.lighting.config0.bump_mode);
+        state.lighting.bump_selector.Assign(regs.lighting.config0.bump_selector);
+        state.lighting.bump_renorm.Assign(regs.lighting.config0.disable_bump_renorm == 0);
+        state.lighting.clamp_highlights.Assign(regs.lighting.config0.clamp_highlights != 0);
+
+        state.lighting.enable_shadow.Assign(regs.lighting.config0.enable_shadow != 0);
+        if (state.lighting.enable_shadow) {
+            state.lighting.shadow_primary.Assign(regs.lighting.config0.shadow_primary != 0);
+            state.lighting.shadow_secondary.Assign(regs.lighting.config0.shadow_secondary != 0);
+            state.lighting.shadow_invert.Assign(regs.lighting.config0.shadow_invert != 0);
+            state.lighting.shadow_alpha.Assign(regs.lighting.config0.shadow_alpha != 0);
+            state.lighting.shadow_selector.Assign(regs.lighting.config0.shadow_selector);
+        }
     }
-
-    state.lighting.lut_d0.enable.Assign(regs.lighting.config1.disable_lut_d0 == 0);
-    state.lighting.lut_d0.abs_input.Assign(regs.lighting.abs_lut_input.disable_d0 == 0);
-    state.lighting.lut_d0.type.Assign(regs.lighting.lut_input.d0.Value());
-    state.lighting.lut_d0.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.d0);
-
-    state.lighting.lut_d1.enable.Assign(regs.lighting.config1.disable_lut_d1 == 0);
-    state.lighting.lut_d1.abs_input.Assign(regs.lighting.abs_lut_input.disable_d1 == 0);
-    state.lighting.lut_d1.type.Assign(regs.lighting.lut_input.d1.Value());
-    state.lighting.lut_d1.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.d1);
-
-    // this is a dummy field due to lack of the corresponding register
-    state.lighting.lut_sp.enable.Assign(1);
-    state.lighting.lut_sp.abs_input.Assign(regs.lighting.abs_lut_input.disable_sp == 0);
-    state.lighting.lut_sp.type.Assign(regs.lighting.lut_input.sp.Value());
-    state.lighting.lut_sp.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.sp);
-
-    state.lighting.lut_fr.enable.Assign(regs.lighting.config1.disable_lut_fr == 0);
-    state.lighting.lut_fr.abs_input.Assign(regs.lighting.abs_lut_input.disable_fr == 0);
-    state.lighting.lut_fr.type.Assign(regs.lighting.lut_input.fr.Value());
-    state.lighting.lut_fr.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.fr);
-
-    state.lighting.lut_rr.enable.Assign(regs.lighting.config1.disable_lut_rr == 0);
-    state.lighting.lut_rr.abs_input.Assign(regs.lighting.abs_lut_input.disable_rr == 0);
-    state.lighting.lut_rr.type.Assign(regs.lighting.lut_input.rr.Value());
-    state.lighting.lut_rr.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rr);
-
-    state.lighting.lut_rg.enable.Assign(regs.lighting.config1.disable_lut_rg == 0);
-    state.lighting.lut_rg.abs_input.Assign(regs.lighting.abs_lut_input.disable_rg == 0);
-    state.lighting.lut_rg.type.Assign(regs.lighting.lut_input.rg.Value());
-    state.lighting.lut_rg.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rg);
-
-    state.lighting.lut_rb.enable.Assign(regs.lighting.config1.disable_lut_rb == 0);
-    state.lighting.lut_rb.abs_input.Assign(regs.lighting.abs_lut_input.disable_rb == 0);
-    state.lighting.lut_rb.type.Assign(regs.lighting.lut_input.rb.Value());
-    state.lighting.lut_rb.scale = regs.lighting.lut_scale.GetScale(regs.lighting.lut_scale.rb);
-
-    state.lighting.config.Assign(regs.lighting.config0.config);
-    state.lighting.enable_primary_alpha.Assign(regs.lighting.config0.enable_primary_alpha);
-    state.lighting.enable_secondary_alpha.Assign(regs.lighting.config0.enable_secondary_alpha);
-    state.lighting.bump_mode.Assign(regs.lighting.config0.bump_mode);
-    state.lighting.bump_selector.Assign(regs.lighting.config0.bump_selector);
-    state.lighting.bump_renorm.Assign(regs.lighting.config0.disable_bump_renorm == 0);
-    state.lighting.clamp_highlights.Assign(regs.lighting.config0.clamp_highlights != 0);
-
-    state.lighting.enable_shadow.Assign(regs.lighting.config0.enable_shadow != 0);
-    state.lighting.shadow_primary.Assign(regs.lighting.config0.shadow_primary != 0);
-    state.lighting.shadow_secondary.Assign(regs.lighting.config0.shadow_secondary != 0);
-    state.lighting.shadow_invert.Assign(regs.lighting.config0.shadow_invert != 0);
-    state.lighting.shadow_alpha.Assign(regs.lighting.config0.shadow_alpha != 0);
-    state.lighting.shadow_selector.Assign(regs.lighting.config0.shadow_selector);
 
     state.proctex.enable.Assign(regs.texturing.main_config.texture3_enable);
     if (state.proctex.enable) {
@@ -284,54 +316,6 @@ static bool IsPassThroughTevStage(const TevStageConfig& stage) {
             stage.GetColorMultiplier() == 1 && stage.GetAlphaMultiplier() == 1);
 }
 
-static std::string SampleTexture(const PicaFSConfig& config, unsigned texture_unit) {
-    const auto& state = config.state;
-    switch (texture_unit) {
-    case 0:
-        // Only unit 0 respects the texturing type
-        switch (state.texture0_type) {
-        case TexturingRegs::TextureConfig::Texture2D:
-            return "textureLod(tex0, texcoord0, getLod(texcoord0 * "
-                   "vec2(textureSize(tex0, 0))) + tex_lod_bias[0])";
-        case TexturingRegs::TextureConfig::Projection2D:
-            // TODO (wwylele): find the exact LOD formula for projection texture
-            return "textureProj(tex0, vec3(texcoord0, texcoord0_w))";
-        case TexturingRegs::TextureConfig::TextureCube:
-            return "texture(tex_cube, vec3(texcoord0, texcoord0_w))";
-        case TexturingRegs::TextureConfig::Shadow2D:
-            return "shadowTexture(texcoord0, texcoord0_w)";
-        case TexturingRegs::TextureConfig::ShadowCube:
-            return "shadowTextureCube(texcoord0, texcoord0_w)";
-        case TexturingRegs::TextureConfig::Disabled:
-            return "vec4(0.0)";
-        default:
-            LOG_CRITICAL(HW_GPU, "Unhandled texture type {:x}", state.texture0_type);
-            UNIMPLEMENTED();
-            return "texture(tex0, texcoord0)";
-        }
-    case 1:
-        return "textureLod(tex1, texcoord1, getLod(texcoord1 * "
-               "vec2(textureSize(tex1, 0))) + tex_lod_bias[1])";
-    case 2:
-        if (state.texture2_use_coord1)
-            return "textureLod(tex2, texcoord1, getLod(texcoord1 * "
-                   "vec2(textureSize(tex2, 0))) + tex_lod_bias[2])";
-        else
-            return "textureLod(tex2, texcoord2, getLod(texcoord2 * "
-                   "vec2(textureSize(tex2, 0))) + tex_lod_bias[2])";
-    case 3:
-        if (state.proctex.enable) {
-            return "ProcTex()";
-        } else {
-            LOG_DEBUG(Render_OpenGL, "Using Texture3 without enabling it");
-            return "vec4(0.0)";
-        }
-    default:
-        UNREACHABLE();
-        return "";
-    }
-}
-
 /// Writes the specified TEV stage source component(s)
 static void AppendSource(std::string& out, const PicaFSConfig& config,
                          TevStageConfig::Source source, std::string_view index_name) {
@@ -347,16 +331,16 @@ static void AppendSource(std::string& out, const PicaFSConfig& config,
         out += "secondary_fragment_color";
         break;
     case Source::Texture0:
-        out += SampleTexture(config, 0);
+        out += "sampleTexUnit0()";
         break;
     case Source::Texture1:
-        out += SampleTexture(config, 1);
+        out += "sampleTexUnit1()";
         break;
     case Source::Texture2:
-        out += SampleTexture(config, 2);
+        out += "sampleTexUnit2()";
         break;
     case Source::Texture3:
-        out += SampleTexture(config, 3);
+        out += "sampleTexUnit3()";
         break;
     case Source::PreviousBuffer:
         out += "combiner_buffer";
@@ -656,7 +640,7 @@ static void WriteLighting(std::string& out, const PicaFSConfig& config) {
 
     // Compute fragment normals and tangents
     const auto perturbation = [&] {
-        return fmt::format("2.0 * ({}).rgb - 1.0", SampleTexture(config, lighting.bump_selector));
+        return fmt::format("2.0 * (sampleTexUnit{}()).rgb - 1.0", lighting.bump_selector);
     };
 
     switch (lighting.bump_mode) {
@@ -700,7 +684,7 @@ static void WriteLighting(std::string& out, const PicaFSConfig& config) {
            "vec3 tangent = quaternion_rotate(normalized_normquat, surface_tangent);\n";
 
     if (lighting.enable_shadow) {
-        std::string shadow_texture = SampleTexture(config, lighting.shadow_selector);
+        std::string shadow_texture = fmt::format("sampleTexUnit{}()", lighting.shadow_selector);
         if (lighting.shadow_invert) {
             out += fmt::format("vec4 shadow = vec4(1.0) - {};\n", shadow_texture);
         } else {
@@ -1247,13 +1231,13 @@ float LookupLightingLUT(int lut_index, int index, float delta) {
 }
 
 float LookupLightingLUTUnsigned(int lut_index, float pos) {
-    int index = clamp(int(pos * 256.0), 0, 255);
+    int index = int(clamp(floor(pos * 256.0), 0.f, 255.f));
     float delta = pos * 256.0 - float(index);
     return LookupLightingLUT(lut_index, index, delta);
 }
 
 float LookupLightingLUTSigned(int lut_index, float pos) {
-    int index = clamp(int(pos * 128.0), -128, 127);
+    int index = int(clamp(floor(pos * 128.0), -128.f, 127.f));
     float delta = pos * 128.0 - float(index);
     if (index < 0) index += 256;
     return LookupLightingLUT(lut_index, index, delta);
@@ -1310,6 +1294,7 @@ float mix2(vec4 s, vec2 a) {
 
 vec4 shadowTexture(vec2 uv, float w) {
 )";
+
     if (!config.state.shadow_texture_orthographic) {
         out += "uv /= w;";
     }
@@ -1344,9 +1329,7 @@ vec4 shadowTextureCube(vec2 uv, float w) {
         uv = -c.xy;
         if (c.z > 0.0) uv.x = -uv.x;
     }
-)";
-    out += "uint z = uint(max(0, int(min(w, 1.0) * float(0xFFFFFF)) - shadow_texture_bias));";
-    out += R"(
+    uint z = uint(max(0, int(min(w, 1.0) * float(0xFFFFFF)) - shadow_texture_bias));
     vec2 coord = vec2(size) * (uv / w * vec2(0.5) + vec2(0.5)) - vec2(0.5);
     vec2 coord_floor = floor(coord);
     vec2 f = coord - coord_floor;
@@ -1409,10 +1392,92 @@ vec4 shadowTextureCube(vec2 uv, float w) {
         CompareShadow(pixels.w, z));
     return vec4(mix2(s, f));
 }
-)";
+    )";
 
-    if (config.state.proctex.enable)
+    if (config.state.proctex.enable) {
         AppendProcTexSampler(out, config);
+    }
+
+    for (u32 texture_unit = 0; texture_unit < 4; texture_unit++) {
+        out += fmt::format("vec4 sampleTexUnit{}() {{", texture_unit);
+        if (texture_unit == 0 && state.texture0_type == TexturingRegs::TextureConfig::Disabled) {
+            out += "return vec4(0.0);}";
+            continue;
+        } else if (texture_unit == 3) {
+            if (state.proctex.enable) {
+                out += "return ProcTex();}";
+            } else {
+                out += "return vec4(0.0);}";
+            }
+            continue;
+        }
+
+        u32 texcoord_num = texture_unit == 2 && state.texture2_use_coord1 ? 1 : texture_unit;
+        if (config.state.texture_border_color[texture_unit].enable_s) {
+            out += fmt::format(R"(
+            if (texcoord{}.x < 0 || texcoord{}.x > 1) {{
+                return tex_border_color[{}];
+            }}
+            )",
+                               texcoord_num, texcoord_num, texture_unit);
+        }
+        if (config.state.texture_border_color[texture_unit].enable_t) {
+            out += fmt::format(R"(
+            if (texcoord{}.y < 0 || texcoord{}.y > 1) {{
+                return tex_border_color[{}];
+            }}
+            )",
+                               texcoord_num, texcoord_num, texture_unit);
+        }
+        // TODO: 3D border?
+
+        switch (texture_unit) {
+        case 0:
+            // Only unit 0 respects the texturing type
+            switch (state.texture0_type) {
+            case TexturingRegs::TextureConfig::Texture2D:
+                out += "return textureLod(tex0, texcoord0, getLod(texcoord0 * "
+                       "vec2(textureSize(tex0, 0))) + tex_lod_bias[0]);";
+                break;
+            case TexturingRegs::TextureConfig::Projection2D:
+                // TODO (wwylele): find the exact LOD formula for projection texture
+                out += "return textureProj(tex0, vec3(texcoord0, texcoord0_w));";
+                break;
+            case TexturingRegs::TextureConfig::TextureCube:
+                out += "return texture(tex_cube, vec3(texcoord0, texcoord0_w));";
+                break;
+            case TexturingRegs::TextureConfig::Shadow2D:
+                out += "return shadowTexture(texcoord0, texcoord0_w);";
+                break;
+            case TexturingRegs::TextureConfig::ShadowCube:
+                out += "return shadowTextureCube(texcoord0, texcoord0_w);";
+                break;
+            default:
+                LOG_CRITICAL(HW_GPU, "Unhandled texture type {:x}", state.texture0_type);
+                UNIMPLEMENTED();
+                out += "return texture(tex0, texcoord0);";
+                break;
+            }
+        case 1:
+            out += "return textureLod(tex1, texcoord1, getLod(texcoord1 * vec2(textureSize(tex1, "
+                   "0))) + tex_lod_bias[1]);";
+            break;
+        case 2:
+            if (state.texture2_use_coord1) {
+                out += "return textureLod(tex2, texcoord1, getLod(texcoord1 * "
+                       "vec2(textureSize(tex2, 0))) + tex_lod_bias[1]);";
+            } else {
+                out += "return textureLod(tex2, texcoord2, getLod(texcoord2 * "
+                       "vec2(textureSize(tex2, 0))) + tex_lod_bias[2]);";
+            }
+            break;
+        default:
+            UNREACHABLE();
+            break;
+        }
+
+        out += "}";
+    }
 
     // We round the interpolated primary color to the nearest 1/255th
     // This maintains the PICA's 8 bits of precision

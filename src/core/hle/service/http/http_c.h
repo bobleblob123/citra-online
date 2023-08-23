@@ -17,12 +17,10 @@
 #include <boost/serialization/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
 #include <boost/serialization/weak_ptr.hpp>
-#ifdef ENABLE_WEB_SERVICE
 #if defined(__ANDROID__)
 #include <ifaddrs.h>
 #endif
 #include <httplib.h>
-#endif
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/service.h"
@@ -214,7 +212,6 @@ public:
     bool uses_default_client_cert{};
 #ifdef ENABLE_WEB_SERVICE
     httplib::Response response;
-#endif
 };
 
 struct SessionData : public Kernel::SessionRequestHandler::SessionDataBase {

@@ -210,7 +210,6 @@ public:
     std::atomic<u64> total_download_size_bytes;
     size_t current_copied_data;
     bool uses_default_client_cert{};
-#ifdef ENABLE_WEB_SERVICE
     httplib::Response response;
 };
 
@@ -329,37 +328,6 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void BeginRequestAsync(Kernel::HLERequestContext& ctx);
-
-    /**
-     * HTTP_C::ReceiveData service function
-     *  Inputs:
-     *      1 : Context handle
-     *      2 : Buffer size
-     *      3 : (OutSize<<4) | 12
-     *      4 : Output data pointer
-     *  Outputs:
-     *      1 : Result of function, 0 on success, otherwise error code
-     */
-    void ReceiveData(Kernel::HLERequestContext& ctx);
-
-    /**
-     * HTTP_C::ReceiveDataTimeout service function
-     *  Inputs:
-     *      1 : Context handle
-     *      2 : Buffer size
-     *    3-4 : u64 nanoseconds delay
-     *      5 : (OutSize<<4) | 12
-     *      6 : Output data pointer
-     *  Outputs:
-     *      1 : Result of function, 0 on success, otherwise error code
-     */
-    void ReceiveDataTimeout(Kernel::HLERequestContext& ctx);
-
-    /**
-     * ReceiveDataImpl:
-     *  Implements ReceiveData and ReceiveDataTimeout service functions
-     */
-    void ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
     void SetProxyDefault(Kernel::HLERequestContext& ctx);
 

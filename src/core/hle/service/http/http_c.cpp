@@ -314,7 +314,6 @@ void HTTP_C::ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout) {
     } else {
         LOG_WARNING(Service_HTTP, "(STUBBED) called");
     }
-    [[maybe_unused]] Kernel::MappedBuffer& buffer = rp.PopMappedBuffer();
 
     Kernel::MappedBuffer& buffer = rp.PopMappedBuffer();
 

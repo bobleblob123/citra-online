@@ -201,7 +201,7 @@ public:
     SSLConfig ssl_config{};
     u32 socket_buffer_size;
     std::vector<RequestHeader> headers;
-    ClCertAData clcert_data;
+    const ClCertAData* clcert_data;
     httplib::Params post_data;
     std::string post_data_raw;
 
@@ -458,6 +458,8 @@ private:
      */
     void GetSSLError(Kernel::HLERequestContext& ctx);
 
+    void SetSSLOpt(Kernel::HLERequestContext& ctx);
+
     /**
      * HTTP_C::OpenClientCertContext service function
      *  Inputs:
@@ -490,6 +492,8 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void CloseClientCertContext(Kernel::HLERequestContext& ctx);
+
+    void SetKeepAlive(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::Finalize service function

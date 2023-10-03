@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "archive.h"
 #include <unordered_map>
 #include <boost/serialization/base_object.hpp>
 #include "common/common_types.h"

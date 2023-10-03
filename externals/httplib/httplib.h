@@ -3543,16 +3543,7 @@ bool read_content(Stream &strm, T &x, size_t payload_max_length, int &status,
 
 inline ssize_t write_headers(Stream &strm, const Headers &headers) {
   ssize_t write_len = 0;
-  auto it = headers.find("Host");
-  if (it != headers.end()) {
-    auto len =
-        strm.write_format("%s: %s\r\n", it->first.c_str(), it->second.c_str());
-    if (len < 0) { return len; }
-    write_len += len;
-  }
   for (const auto &x : headers) {
-    if (x.first == "Host")
-        continue;
     auto len =
         strm.write_format("%s: %s\r\n", x.first.c_str(), x.second.c_str());
     if (len < 0) { return len; }
@@ -6295,7 +6286,7 @@ inline bool ClientImpl::write_request(Stream &strm, Request &req,
   // Prepare additional headers
   if (close_connection) {
     if (!req.has_header("Connection")) {
-      //req.headers.emplace("Connection", "close");
+      req.headers.emplace("Connection", "close");
     }
   }
 
@@ -6315,7 +6306,7 @@ inline bool ClientImpl::write_request(Stream &strm, Request &req,
     }
   }
 
-  //if (!req.has_header("Accept")) { req.headers.emplace("Accept", "*/*"); }
+  if (!req.has_header("Accept")) { req.headers.emplace("Accept", "*/*"); }
 
 #ifndef CPPHTTPLIB_NO_DEFAULT_USER_AGENT
   if (!req.has_header("User-Agent")) {
@@ -6340,7 +6331,7 @@ inline bool ClientImpl::write_request(Stream &strm, Request &req,
     }
   } else {
     if (!req.has_header("Content-Type")) {
-      //req.headers.emplace("Content-Type", "text/plain");
+      req.headers.emplace("Content-Type", "text/plain");
     }
 
     if (!req.has_header("Content-Length")) {

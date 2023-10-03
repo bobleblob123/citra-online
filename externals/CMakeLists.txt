@@ -190,7 +190,7 @@ if (NOT OPENSSL_FOUND)
     set(LIBRESSL_SKIP_INSTALL ON CACHE BOOL "")
     set(OPENSSLDIR "/etc/ssl/")
     add_subdirectory(libressl EXCLUDE_FROM_ALL)
-    target_include_directories(ssl INTERFACE ./libressl/include)
+    target_include_directories(ssl SYSTEM INTERFACE ./libressl/include)
     target_compile_definitions(ssl PRIVATE -DHAVE_INET_NTOP)
     get_directory_property(OPENSSL_LIBRARIES
         DIRECTORY libressl

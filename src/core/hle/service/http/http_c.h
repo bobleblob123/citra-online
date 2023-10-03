@@ -287,6 +287,13 @@ private:
      */
     void CloseContext(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::CancelConnection service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
     void CancelConnection(Kernel::HLERequestContext& ctx);
 
     /**
@@ -329,6 +336,13 @@ private:
      */
     void BeginRequestAsync(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::SetProxyDefault service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
     void SetProxyDefault(Kernel::HLERequestContext& ctx);
 
     /**
@@ -392,8 +406,31 @@ private:
      */
     void AddPostDataAscii(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::AddPostDataRaw service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Post data length
+     *      3-4: (Mapped buffer) Post data
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2-3: (Mapped buffer) Post data
+     */
     void AddPostDataRaw(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::GetResponseHeader service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Header name length
+     *      3 : Return value length
+     *      4-5 : (Static buffer) Header name
+     *      6-7 : (Mapped buffer) Header value
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : Header value copied size
+     *      3-4: (Mapped buffer) Header value
+     */
     void GetResponseHeader(Kernel::HLERequestContext& ctx);
 
     /**
@@ -417,6 +454,16 @@ private:
      */
     void GetResponseStatusCodeTimeout(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::AddTrustedRootCA service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : CA data length
+     *      3-4: (Mapped buffer) CA data
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2-3: (Mapped buffer) CA data
+     */
     void AddTrustedRootCA(Kernel::HLERequestContext& ctx);
 
     /**
@@ -435,6 +482,14 @@ private:
      */
     void GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool timeout);
 
+    /**
+     * HTTP_C::SetDefaultClientCert service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Client cert ID
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
     void SetDefaultClientCert(Kernel::HLERequestContext& ctx);
 
     /**
@@ -458,6 +513,14 @@ private:
      */
     void GetSSLError(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::SetSSLOpt service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : SSL Option
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
     void SetSSLOpt(Kernel::HLERequestContext& ctx);
 
     /**
@@ -493,6 +556,14 @@ private:
      */
     void CloseClientCertContext(Kernel::HLERequestContext& ctx);
 
+    /**
+     * HTTP_C::SetKeepAlive service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Keep Alive Option
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
     void SetKeepAlive(Kernel::HLERequestContext& ctx);
 
     /**

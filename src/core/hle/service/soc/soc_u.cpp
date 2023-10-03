@@ -1133,20 +1133,20 @@ void SOC_U::RecvFromOther(Kernel::HLERequestContext& ctx) {
             socklen_t src_addr_len = sizeof(src_addr);
             CTRSockAddr ctr_src_addr;
             if (parallel_data->addr_len > 0) {
-                parallel_data->ret =
+                parallel_data->ret = static_cast<s32>(
                     ::recvfrom(parallel_data->fd_info.socket_fd,
                                reinterpret_cast<char*>(parallel_data->output_buff.data()),
-                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len);
+                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len));
                 if (parallel_data->ret >= 0 && src_addr_len > 0) {
                     ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
                     std::memcpy(parallel_data->addr_buff.data(), &ctr_src_addr,
                                 parallel_data->addr_len);
                 }
             } else {
-                parallel_data->ret =
+                parallel_data->ret = static_cast<s32>(
                     ::recvfrom(parallel_data->fd_info.socket_fd,
                                reinterpret_cast<char*>(parallel_data->output_buff.data()),
-                               parallel_data->len, parallel_data->flags, NULL, 0);
+                               parallel_data->len, parallel_data->flags, NULL, 0));
                 parallel_data->addr_buff.resize(0);
             }
             parallel_data->recv_error = (parallel_data->ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;
@@ -1240,20 +1240,20 @@ void SOC_U::RecvFrom(Kernel::HLERequestContext& ctx) {
             CTRSockAddr ctr_src_addr;
             if (parallel_data->addr_len > 0) {
                 // Only get src adr if input adr available
-                parallel_data->ret =
+                parallel_data->ret = static_cast<s32>(
                     ::recvfrom(parallel_data->fd_info.socket_fd,
                                reinterpret_cast<char*>(parallel_data->output_buff.data()),
-                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len);
+                               parallel_data->len, parallel_data->flags, &src_addr, &src_addr_len));
                 if (parallel_data->ret >= 0 && src_addr_len > 0) {
                     ctr_src_addr = CTRSockAddr::FromPlatform(src_addr);
                     std::memcpy(parallel_data->addr_buff.data(), &ctr_src_addr,
                                 parallel_data->addr_len);
                 }
             } else {
-                parallel_data->ret =
+                parallel_data->ret = static_cast<s32>(
                     ::recvfrom(parallel_data->fd_info.socket_fd,
                                reinterpret_cast<char*>(parallel_data->output_buff.data()),
-                               parallel_data->len, parallel_data->flags, NULL, 0);
+                               parallel_data->len, parallel_data->flags, NULL, 0));
                 parallel_data->addr_buff.resize(0);
             }
             parallel_data->recv_error = (parallel_data->ret == SOCKET_ERROR_VALUE) ? GET_ERRNO : 0;

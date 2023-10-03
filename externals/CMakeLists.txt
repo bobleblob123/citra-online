@@ -199,7 +199,7 @@ endif()
 
 # httplib
 add_library(httplib INTERFACE)
-target_include_directories(httplib INTERFACE ./httplib)
+target_include_directories(httplib SYSTEM INTERFACE ./httplib)
 target_compile_options(httplib INTERFACE -DCPPHTTPLIB_OPENSSL_SUPPORT)
 target_link_libraries(httplib INTERFACE ${OPENSSL_LIBRARIES})
 

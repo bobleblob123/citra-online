@@ -20,7 +20,23 @@
 #if defined(__ANDROID__)
 #include <ifaddrs.h>
 #endif
+#if defined(_WIN32)
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(default : all)
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic warning "-Werror"
+#endif
+#endif
 #include <httplib.h>
+#if defined(_WIN32)
+#ifdef _MSC_VER
+#pragma warning(pop)
+#else
+#pragma GCC diagnostic pop
+#endif
+#endif
 #include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/service.h"

@@ -11,9 +11,9 @@
 #include <vector>
 #include <boost/container/flat_set.hpp>
 #include <boost/serialization/export.hpp>
-#include <boost/serialization/shared_ptr.hpp>
 #include <boost/serialization/unordered_map.hpp>
 #include <boost/serialization/vector.hpp>
+#include <boost/serialization/weak_ptr.hpp>
 #include "common/common_types.h"
 #include "common/thread_queue_list.h"
 #include "core/arm/arm_interface.h"
@@ -238,14 +238,10 @@ public:
     /**
      * Schedules an event to wake up the specified thread after the specified delay
      * @param nanoseconds The time this thread will be allowed to sleep for
+     * @param thread_safe_mode Set to true if called from a different thread than the emulator
+     * thread, such as coroutines.
      */
-    void WakeAfterDelay(s64 nanoseconds);
-
-    /**
-     * Schedules an event to wake up the specified thread after the specified delay, thread safe
-     * @param nanoseconds The time this thread will be allowed to sleep for
-     */
-    void WakeAfterDelayTS(s64 nanoseconds);
+    void WakeAfterDelay(s64 nanoseconds, bool thread_safe_mode = false);
 
     /**
      * Sets the result after the thread awakens (from either WaitSynchronization SVC)

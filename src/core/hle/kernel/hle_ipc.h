@@ -278,22 +278,22 @@ private:
 
 public:
     /**
-     * Puts the game thread to sleep and calls the specified async_section from another thread.
+     * Puts the game thread to sleep and calls the specified async_section asynchronously.
      * Once the execution of the async section finishes, result_function is called. Use this
      * mechanism to run blocking IO operations, so that other game threads are allowed to run
      * while the one performing the blocking operation waits.
      * @param async_section Callable that takes Kernel::HLERequestContext& as argument
-     * and returns the amount of nanoseconds to wait before calling result_function. 
-     * This callable is ran from a different thread.
+     * and returns the amount of nanoseconds to wait before calling result_function.
+     * This callable is ran asynchronously.
      * @param result_function Callable that takes Kernel::HLERequestContext& as argument
-     * and doesn't return anything. This callable is ran from the emulator thread 
+     * and doesn't return anything. This callable is ran from the emulator thread
      * and can be used to set the IPC result.
-     * @param really_async If set to false, it will call async_section and result_function
-     * from the emulator thread without resorting to new threads.
+     * @param really_async If set to false, it will call both async_section and result_function
+     * from the emulator thread.
      */
     template <typename AsyncFunctor, typename ResultFunctor>
     void RunAsync(AsyncFunctor async_section, ResultFunctor result_function,
-                           bool really_async = true) {
+                  bool really_async = true) {
 
         if (really_async) {
             this->SleepClientThread(
@@ -301,16 +301,16 @@ public:
                 std::make_shared<AsyncWakeUpCallback<ResultFunctor>>(
                     result_function,
                     std::move(std::async(std::launch::async, [this, async_section] {
-                        s64 sleepfor = async_section(*this);
-                        this->thread->WakeAfterDelayTS(sleepfor);
+                        s64 sleep_for = async_section(*this);
+                        this->thread->WakeAfterDelay(sleep_for, true);
                     }))));
 
         } else {
-            s64 sleepfor = async_section(*this);
-            if (sleepfor > 0) {
+            s64 sleep_for = async_section(*this);
+            if (sleep_for > 0) {
                 auto parallel_wakeup = std::make_shared<AsyncWakeUpCallback<ResultFunctor>>(
                     result_function, std::move(std::future<void>()));
-                this->SleepClientThread("RunInPool", std::chrono::nanoseconds(sleepfor),
+                this->SleepClientThread("RunAsync", std::chrono::nanoseconds(sleep_for),
                                         parallel_wakeup);
             } else {
                 result_function(*this);

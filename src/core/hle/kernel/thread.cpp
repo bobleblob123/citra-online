@@ -45,16 +45,7 @@ void Thread::serialize(Archive& ar, const unsigned int file_version) {
     ar& tls_address;
     ar& held_mutexes;
     ar& pending_mutexes;
-
-    // Note: this is equivalent of what is done in boost/serialization/weak_ptr.hpp, but it's
-    // compatible with previous versions of savestates.
-    // TODO(SaveStates): When the savestate version is bumped, simplify this again.
-    std::shared_ptr<Process> shared_owner_process = owner_process.lock();
-    ar& shared_owner_process;
-    if (Archive::is_loading::value) {
-        owner_process = shared_owner_process;
-    }
-
+    ar& owner_process;
     ar& wait_objects;
     ar& wait_address;
     ar& name;
@@ -253,22 +244,15 @@ void ThreadManager::ThreadWakeupCallback(u64 thread_id, s64 cycles_late) {
     thread->ResumeFromWait();
 }
 
-void Thread::WakeAfterDelay(s64 nanoseconds) {
+void Thread::WakeAfterDelay(s64 nanoseconds, bool thread_safe_mode) {
     // Don't schedule a wakeup if the thread wants to wait forever
     if (nanoseconds == -1)
         return;
+    size_t core = thread_safe_mode ? core_id : std::numeric_limits<std::size_t>::max();
 
     thread_manager.kernel.timing.ScheduleEvent(nsToCycles(nanoseconds),
-                                               thread_manager.ThreadWakeupEventType, thread_id);
-}
-
-void Thread::WakeAfterDelayTS(s64 nanoseconds) {
-    // Don't schedule a wakeup if the thread wants to wait forever
-    if (nanoseconds == -1)
-        return;
-
-    thread_manager.kernel.timing.ScheduleEventTS(
-        nsToCycles(nanoseconds), thread_manager.ThreadWakeupEventType, thread_id, core_id);
+                                               thread_manager.ThreadWakeupEventType, thread_id,
+                                               core, thread_safe_mode);
 }
 
 void Thread::ResumeFromWait() {

@@ -21,7 +21,6 @@
 #include <ifaddrs.h>
 #endif
 #include <httplib.h>
-#include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/service.h"
 
@@ -115,12 +114,6 @@ private:
     friend class boost::serialization::access;
 };
 
-struct ClCertAData {
-    std::vector<u8> certificate;
-    std::vector<u8> private_key;
-    bool init = false;
-};
-
 /// Represents an HTTP context.
 class Context final {
 public:
@@ -176,6 +169,22 @@ public:
         friend class boost::serialization::access;
     };
 
+    struct PostData {
+        // TODO(Subv): Support Binary and Raw POST elements.
+        PostData(std::string name, std::string value) : name(name), value(value){};
+        PostData() = default;
+        std::string name;
+        std::string value;
+
+    private:
+        template <class Archive>
+        void serialize(Archive& ar, const unsigned int) {
+            ar& name;
+            ar& value;
+        }
+        friend class boost::serialization::access;
+    };
+
     struct SSLConfig {
         u32 options;
         std::weak_ptr<ClientCertContext> client_cert_ctx;
@@ -191,7 +200,6 @@ public:
         friend class boost::serialization::access;
     };
 
-    ClCertAData clcert_data;
     Handle handle;
     u32 session_id;
     std::string url;
@@ -202,14 +210,11 @@ public:
     SSLConfig ssl_config{};
     u32 socket_buffer_size;
     std::vector<RequestHeader> headers;
-    httplib::Params post_data;
-    std::string post_data_raw;
+    std::vector<PostData> post_data;
 
     std::future<void> request_future;
     std::atomic<u64> current_download_size_bytes;
     std::atomic<u64> total_download_size_bytes;
-    size_t current_copied_data;
-    bool uses_default_client_cert{};
     httplib::Response response;
 };
 
@@ -247,10 +252,6 @@ class HTTP_C final : public ServiceFramework<HTTP_C, SessionData> {
 public:
     HTTP_C();
 
-    const ClCertAData& GetClCertA() const {
-        return ClCertA;
-    }
-
 private:
     /**
      * HTTP_C::Initialize service function
@@ -286,8 +287,6 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void CloseContext(Kernel::HLERequestContext& ctx);
-
-    void CancelConnection(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::GetDownloadSizeState service function
@@ -328,8 +327,6 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void BeginRequestAsync(Kernel::HLERequestContext& ctx);
-
-    void SetProxyDefault(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::ReceiveData service function
@@ -392,10 +389,6 @@ private:
      */
     void AddPostDataAscii(Kernel::HLERequestContext& ctx);
 
-    void AddPostDataRaw(Kernel::HLERequestContext& ctx);
-
-    void GetResponseHeader(Kernel::HLERequestContext& ctx);
-
     /**
      * HTTP_C::GetResponseStatusCode service function
      *  Inputs:
@@ -417,25 +410,11 @@ private:
      */
     void GetResponseStatusCodeTimeout(Kernel::HLERequestContext& ctx);
 
-    void AddTrustedRootCA(Kernel::HLERequestContext& ctx);
-
-    /**
-     * HTTP_C::AddDefaultCert service function
-     *  Inputs:
-     *      1 : Context handle
-     *      2 : Cert ID
-     *  Outputs:
-     *      1 : Result of function, 0 on success, otherwise error code
-     */
-    void AddDefaultCert(Kernel::HLERequestContext& ctx);
-
     /**
      * GetResponseStatusCodeImpl:
      *  Implements GetResponseStatusCode and GetResponseStatusCodeTimeout service functions
      */
     void GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool timeout);
-
-    void SetDefaultClientCert(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::SetClientCertContext service function
@@ -523,7 +502,11 @@ private:
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;
 
-    ClCertAData ClCertA;
+    struct {
+        std::vector<u8> certificate;
+        std::vector<u8> private_key;
+        bool init = false;
+    } ClCertA;
 
 private:
     template <class Archive>
@@ -543,8 +526,6 @@ private:
     }
     friend class boost::serialization::access;
 };
-
-std::shared_ptr<HTTP_C> GetService(Core::System& system);
 
 void InstallInterfaces(Core::System& system);
 

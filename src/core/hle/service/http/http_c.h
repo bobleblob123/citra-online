@@ -21,6 +21,7 @@
 #include <ifaddrs.h>
 #endif
 #include <httplib.h>
+#include "core/hle/ipc_helpers.h"
 #include "core/hle/kernel/shared_memory.h"
 #include "core/hle/service/service.h"
 
@@ -114,6 +115,12 @@ private:
     friend class boost::serialization::access;
 };
 
+struct ClCertAData {
+    std::vector<u8> certificate;
+    std::vector<u8> private_key;
+    bool init = false;
+};
+
 /// Represents an HTTP context.
 class Context final {
 public:
@@ -169,22 +176,6 @@ public:
         friend class boost::serialization::access;
     };
 
-    struct PostData {
-        // TODO(Subv): Support Binary and Raw POST elements.
-        PostData(std::string name, std::string value) : name(name), value(value){};
-        PostData() = default;
-        std::string name;
-        std::string value;
-
-    private:
-        template <class Archive>
-        void serialize(Archive& ar, const unsigned int) {
-            ar& name;
-            ar& value;
-        }
-        friend class boost::serialization::access;
-    };
-
     struct SSLConfig {
         u32 options;
         std::weak_ptr<ClientCertContext> client_cert_ctx;
@@ -210,11 +201,15 @@ public:
     SSLConfig ssl_config{};
     u32 socket_buffer_size;
     std::vector<RequestHeader> headers;
-    std::vector<PostData> post_data;
+    const ClCertAData* clcert_data;
+    httplib::Params post_data;
+    std::string post_data_raw;
 
     std::future<void> request_future;
     std::atomic<u64> current_download_size_bytes;
     std::atomic<u64> total_download_size_bytes;
+    size_t current_copied_data;
+    bool uses_default_client_cert{};
     httplib::Response response;
 };
 
@@ -252,6 +247,10 @@ class HTTP_C final : public ServiceFramework<HTTP_C, SessionData> {
 public:
     HTTP_C();
 
+    const ClCertAData& GetClCertA() const {
+        return ClCertA;
+    }
+
 private:
     /**
      * HTTP_C::Initialize service function
@@ -287,6 +286,15 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void CloseContext(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::CancelConnection service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void CancelConnection(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::GetDownloadSizeState service function
@@ -327,6 +335,15 @@ private:
      *      1 : Result of function, 0 on success, otherwise error code
      */
     void BeginRequestAsync(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::SetProxyDefault service function
+     *  Inputs:
+     *      1 : Context handle
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetProxyDefault(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::ReceiveData service function
@@ -390,6 +407,33 @@ private:
     void AddPostDataAscii(Kernel::HLERequestContext& ctx);
 
     /**
+     * HTTP_C::AddPostDataRaw service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Post data length
+     *      3-4: (Mapped buffer) Post data
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2-3: (Mapped buffer) Post data
+     */
+    void AddPostDataRaw(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::GetResponseHeader service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Header name length
+     *      3 : Return value length
+     *      4-5 : (Static buffer) Header name
+     *      6-7 : (Mapped buffer) Header value
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2 : Header value copied size
+     *      3-4: (Mapped buffer) Header value
+     */
+    void GetResponseHeader(Kernel::HLERequestContext& ctx);
+
+    /**
      * HTTP_C::GetResponseStatusCode service function
      *  Inputs:
      *      1 : Context handle
@@ -411,10 +455,42 @@ private:
     void GetResponseStatusCodeTimeout(Kernel::HLERequestContext& ctx);
 
     /**
+     * HTTP_C::AddTrustedRootCA service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : CA data length
+     *      3-4: (Mapped buffer) CA data
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     *      2-3: (Mapped buffer) CA data
+     */
+    void AddTrustedRootCA(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::AddDefaultCert service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Cert ID
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void AddDefaultCert(Kernel::HLERequestContext& ctx);
+
+    /**
      * GetResponseStatusCodeImpl:
      *  Implements GetResponseStatusCode and GetResponseStatusCodeTimeout service functions
      */
     void GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool timeout);
+
+    /**
+     * HTTP_C::SetDefaultClientCert service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Client cert ID
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetDefaultClientCert(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::SetClientCertContext service function
@@ -436,6 +512,16 @@ private:
      *      2 : SSL Error code
      */
     void GetSSLError(Kernel::HLERequestContext& ctx);
+
+    /**
+     * HTTP_C::SetSSLOpt service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : SSL Option
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetSSLOpt(Kernel::HLERequestContext& ctx);
 
     /**
      * HTTP_C::OpenClientCertContext service function
@@ -471,6 +557,16 @@ private:
     void CloseClientCertContext(Kernel::HLERequestContext& ctx);
 
     /**
+     * HTTP_C::SetKeepAlive service function
+     *  Inputs:
+     *      1 : Context handle
+     *      2 : Keep Alive Option
+     *  Outputs:
+     *      1 : Result of function, 0 on success, otherwise error code
+     */
+    void SetKeepAlive(Kernel::HLERequestContext& ctx);
+
+    /**
      * HTTP_C::Finalize service function
      *  Outputs:
      *      1 : Result of function, 0 on success, otherwise error code
@@ -502,11 +598,7 @@ private:
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;
 
-    struct {
-        std::vector<u8> certificate;
-        std::vector<u8> private_key;
-        bool init = false;
-    } ClCertA;
+    ClCertAData ClCertA;
 
 private:
     template <class Archive>
@@ -526,6 +618,8 @@ private:
     }
     friend class boost::serialization::access;
 };
+
+std::shared_ptr<HTTP_C> GetService(Core::System& system);
 
 void InstallInterfaces(Core::System& system);
 

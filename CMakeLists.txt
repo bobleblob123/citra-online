@@ -40,8 +40,17 @@ endif()
 
 if (CMAKE_BUILD_TYPE STREQUAL Debug)
     set(IS_DEBUG_BUILD ON)
+    set(IS_RELEASE_BUILD OFF)
 else()
     set(IS_DEBUG_BUILD OFF)
+    set(IS_RELEASE_BUILD ON)
+endif()
+
+# LTO takes too much memory and time using MSVC.
+if (NOT MSVC AND IS_RELEASE_BUILD)
+    set(DEFAULT_ENABLE_LTO ON)
+else()
+    set(DEFAULT_ENABLE_LTO OFF)
 endif()
 
 option(ENABLE_SDL2 "Enable using SDL2" ON)
@@ -73,7 +82,7 @@ CMAKE_DEPENDENT_OPTION(CITRA_ENABLE_BUNDLE_TARGET "Enable the distribution bundl
 
 # Compile options
 CMAKE_DEPENDENT_OPTION(COMPILE_WITH_DWARF "Add DWARF debugging information" ${IS_DEBUG_BUILD} "MINGW" OFF)
-option(ENABLE_LTO "Enable link time optimization" OFF)
+option(ENABLE_LTO "Enable link time optimization" ${DEFAULT_ENABLE_LTO})
 option(CITRA_USE_PRECOMPILED_HEADERS "Use precompiled headers" ON)
 option(CITRA_WARNINGS_AS_ERRORS "Enable warnings as errors" ON)
 
@@ -84,6 +93,8 @@ option(USE_SYSTEM_SDL2 "Use the system SDL2 lib (instead of the bundled one)" OF
 option(USE_SYSTEM_BOOST "Use the system Boost libs (instead of the bundled ones)" OFF)
 option(USE_SYSTEM_OPENSSL "Use the system OpenSSL libs (instead of the bundled LibreSSL)" OFF)
 option(USE_SYSTEM_LIBUSB "Use the system libusb (instead of the bundled libusb)" OFF)
+option(USE_SYSTEM_CPP_JWT "Use the system cpp-jwt (instead of the bundled one)" OFF)
+option(USE_SYSTEM_SOUNDTOUCH "Use the system SoundTouch (instead of the bundled one)" OFF)
 
 if (CITRA_USE_PRECOMPILED_HEADERS)
     message(STATUS "Using Precompiled Headers.")
@@ -271,7 +282,7 @@ endif()
 # against all the src files. This should be used before making a pull request.
 # =======================================================================
 
-set(CLANG_FORMAT_POSTFIX "-12")
+set(CLANG_FORMAT_POSTFIX "-15")
 find_program(CLANG_FORMAT
     NAMES clang-format${CLANG_FORMAT_POSTFIX}
           clang-format
@@ -385,6 +396,14 @@ endif()
 if (ENABLE_LIBUSB AND USE_SYSTEM_LIBUSB)
     include(FindPkgConfig)
     find_package(LibUSB)
+endif()
+
+if (USE_SYSTEM_SOUNDTOUCH)
+    include(FindPkgConfig)
+    find_package(SoundTouch REQUIRED)
+    add_library(SoundTouch INTERFACE)
+    target_link_libraries(SoundTouch INTERFACE "${SOUNDTOUCH_LIBRARIES}")
+    target_include_directories(SoundTouch INTERFACE "${SOUNDTOUCH_INCLUDE_DIRS}")
 endif()
 
 add_subdirectory(src)

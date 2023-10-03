@@ -11,11 +11,12 @@ namespace Common {
 class DynamicLibrary {
 public:
     explicit DynamicLibrary();
+    explicit DynamicLibrary(void* handle);
     explicit DynamicLibrary(std::string_view name, int major = -1, int minor = -1);
     ~DynamicLibrary();
 
     /// Returns true if the library is loaded, otherwise false.
-    [[nodiscard]] bool IsLoaded() {
+    [[nodiscard]] bool IsLoaded() const noexcept {
         return handle != nullptr;
     }
 

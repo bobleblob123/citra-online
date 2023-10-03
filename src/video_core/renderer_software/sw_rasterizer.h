@@ -5,7 +5,7 @@
 #pragma once
 
 #include <span>
-
+#include "common/thread_worker.h"
 #include "video_core/rasterizer_interface.h"
 #include "video_core/regs_texturing.h"
 #include "video_core/renderer_software/sw_clipper.h"
@@ -52,16 +52,17 @@ private:
         std::span<const Pica::TexturingRegs::FullTextureConfig, 3> textures, f24 tc0_w) const;
 
     /// Returns the final pixel color with blending or logic ops applied.
-    Common::Vec4<u8> PixelColor(u16 x, u16 y, Common::Vec4<u8>& combiner_output) const;
+    Common::Vec4<u8> PixelColor(u16 x, u16 y, Common::Vec4<u8> combiner_output) const;
 
     /// Emulates the TEV configuration and returns the combiner output.
-    void WriteTevConfig(std::span<const Common::Vec4<u8>, 4> texture_color,
-                        std::span<const Pica::TexturingRegs::TevStageConfig, 6> tev_stages,
-                        Common::Vec4<u8> primary_color, Common::Vec4<u8> primary_fragment_color,
-                        Common::Vec4<u8> secondary_fragment_color);
+    Common::Vec4<u8> WriteTevConfig(
+        std::span<const Common::Vec4<u8>, 4> texture_color,
+        std::span<const Pica::TexturingRegs::TevStageConfig, 6> tev_stages,
+        Common::Vec4<u8> primary_color, Common::Vec4<u8> primary_fragment_color,
+        Common::Vec4<u8> secondary_fragment_color);
 
     /// Blends fog to the combiner output if enabled.
-    void WriteFog(Common::Vec4<u8>& combiner_output, float depth) const;
+    void WriteFog(float depth, Common::Vec4<u8>& combiner_output) const;
 
     /// Performs the alpha test. Returns false if the test failed.
     bool DoAlphaTest(u8 alpha) const;
@@ -73,10 +74,9 @@ private:
     Memory::MemorySystem& memory;
     Pica::State& state;
     const Pica::Regs& regs;
+    size_t num_sw_threads;
+    Common::ThreadWorker sw_workers;
     Framebuffer fb;
-    // Kirby Blowout Blast relies on the combiner output of a previous draw
-    // in order to render the sky correctly.
-    Common::Vec4<u8> combiner_output{};
 };
 
 } // namespace SwRenderer

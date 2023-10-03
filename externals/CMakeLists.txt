@@ -122,10 +122,13 @@ add_subdirectory(open_source_archives)
 add_subdirectory(library-headers EXCLUDE_FROM_ALL)
 
 # SoundTouch
-set(INTEGER_SAMPLES ON CACHE BOOL "")
-set(SOUNDSTRETCH OFF CACHE BOOL "")
-set(SOUNDTOUCH_DLL OFF CACHE BOOL "")
-add_subdirectory(soundtouch EXCLUDE_FROM_ALL)
+if(NOT USE_SYSTEM_SOUNDTOUCH)
+    set(INTEGER_SAMPLES ON CACHE BOOL "")
+    set(SOUNDSTRETCH OFF CACHE BOOL "")
+    set(SOUNDTOUCH_DLL OFF CACHE BOOL "")
+    add_subdirectory(soundtouch EXCLUDE_FROM_ALL)
+    target_compile_definitions(SoundTouch PUBLIC SOUNDTOUCH_INTEGER_SAMPLES)
+endif()
 
 # sirit
 add_subdirectory(sirit EXCLUDE_FROM_ALL)
@@ -207,9 +210,15 @@ endif()
 
 # cpp-jwt
 if (ENABLE_WEB_SERVICE)
-    add_library(cpp-jwt INTERFACE)
-    target_include_directories(cpp-jwt INTERFACE ./cpp-jwt/include)
-    target_compile_definitions(cpp-jwt INTERFACE CPP_JWT_USE_VENDORED_NLOHMANN_JSON)
+    if (USE_SYSTEM_CPP_JWT)
+        find_package(cpp-jwt REQUIRED)
+        add_library(cpp-jwt INTERFACE)
+        target_link_libraries(cpp-jwt INTERFACE cpp-jwt::cpp-jwt)
+    else()
+        add_library(cpp-jwt INTERFACE)
+        target_include_directories(cpp-jwt INTERFACE ./cpp-jwt/include)
+        target_compile_definitions(cpp-jwt INTERFACE CPP_JWT_USE_VENDORED_NLOHMANN_JSON)
+    endif()
 endif()
 
 # lodepng
@@ -242,3 +251,11 @@ target_include_directories(vma SYSTEM INTERFACE ./vma/include)
 # vulkan-headers
 add_library(vulkan-headers INTERFACE)
 target_include_directories(vulkan-headers SYSTEM INTERFACE ./vulkan-headers/include)
+if (APPLE)
+    target_include_directories(vulkan-headers SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/MoltenVK)
+endif()
+
+# adrenotools
+if (ANDROID)
+    add_subdirectory(libadrenotools)
+endif()

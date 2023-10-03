@@ -247,6 +247,12 @@ void OpenGLState::Apply() const {
         glBindTexture(GL_TEXTURE_BUFFER, texture_buffer_lut_rgba.texture_buffer);
     }
 
+    // Color buffer
+    if (color_buffer.texture_2d != cur_state.color_buffer.texture_2d) {
+        glActiveTexture(TextureUnits::TextureColorBuffer.Enum());
+        glBindTexture(GL_TEXTURE_2D, color_buffer.texture_2d);
+    }
+
     // Shadow Images
     if (image_shadow_buffer != cur_state.image_shadow_buffer) {
         glBindImageTexture(ImageUnits::ShadowBuffer, image_shadow_buffer, 0, GL_FALSE, 0,
@@ -338,7 +344,7 @@ void OpenGLState::Apply() const {
 
     // Clip distance
     if (!GLES || GLAD_GL_EXT_clip_cull_distance) {
-        for (size_t i = 0; i < clip_distance.size(); ++i) {
+        for (std::size_t i = 0; i < clip_distance.size(); ++i) {
             if (clip_distance[i] != cur_state.clip_distance[i]) {
                 if (clip_distance[i]) {
                     glEnable(GL_CLIP_DISTANCE0 + static_cast<GLenum>(i));

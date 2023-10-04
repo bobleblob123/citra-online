@@ -137,8 +137,8 @@ static ssize_t WriteHeaders(httplib::Stream& strm,
     return write_len;
 }
 
-static size_t HeaderWriteHandler(std::vector<Context::RequestHeader>& pending_headers,
-                                 httplib::Stream& strm, httplib::Headers& httplib_headers) {
+static size_t HandleHeaderWrite(std::vector<Context::RequestHeader>& pending_headers,
+                                httplib::Stream& strm, httplib::Headers& httplib_headers) {
     std::vector<Context::RequestHeader> final_headers;
     std::vector<Context::RequestHeader>::iterator it_p;
     httplib::Headers::iterator it_h;
@@ -148,6 +148,7 @@ static size_t HeaderWriteHandler(std::vector<Context::RequestHeader>& pending_he
                             [&str](Context::RequestHeader& rh) { return rh.name == str; });
     };
 
+    // Watch out for header ordering!!
     // First: Host
     it_p = find_pending_header("Host");
     if (it_p != pending_headers.end()) {
@@ -160,14 +161,13 @@ static size_t HeaderWriteHandler(std::vector<Context::RequestHeader>& pending_he
         }
     }
 
-    // Second: Content-Type (optional, ignore httplib)
-    it_p = find_pending_header("Content-Type");
-    if (it_p != pending_headers.end()) {
-        final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
-        pending_headers.erase(it_p);
+    // Second, user defined headers
+    // Third, Content-Type (optional, appended by MakeRequest)
+    for (const auto& header : pending_headers) {
+        final_headers.push_back(header);
     }
 
-    // Third: Content-Length
+    // Fourth: Content-Length
     it_p = find_pending_header("Content-Length");
     if (it_p != pending_headers.end()) {
         final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
@@ -177,11 +177,6 @@ static size_t HeaderWriteHandler(std::vector<Context::RequestHeader>& pending_he
         if (it_h != httplib_headers.end()) {
             final_headers.push_back(Context::RequestHeader(it_h->first, it_h->second));
         }
-    }
-
-    // Finally, user defined headers
-    for (const auto& header : pending_headers) {
-        final_headers.push_back(header);
     }
 
     return WriteHeaders(strm, final_headers);
@@ -212,21 +207,20 @@ void Context::MakeRequest() {
         return true;
     };
 
-    // Watch out for header ordering!!
     auto header_writter = [&pending_headers](httplib::Stream& strm,
                                              httplib::Headers& httplib_headers) {
-        return HeaderWriteHandler(pending_headers, strm, httplib_headers);
+        return HandleHeaderWrite(pending_headers, strm, httplib_headers);
     };
+
+    for (const auto& header : headers) {
+        pending_headers.push_back(header);
+    }
 
     if (!post_data.empty()) {
         pending_headers.push_back(
             Context::RequestHeader("Content-Type", "application/x-www-form-urlencoded"));
         request.body = httplib::detail::params_to_query_str(post_data);
         boost::replace_all(request.body, "*", "%2A");
-    }
-
-    for (const auto& header : headers) {
-        pending_headers.push_back(header);
     }
 
     if (!post_data_raw.empty()) {

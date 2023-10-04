@@ -117,11 +117,16 @@ static URLInfo SplitUrl(const std::string& url) {
     if (port == -1) {
         port = is_https ? default_https_port : default_http_port;
     }
-    return URLInfo{.is_https = is_https, .host = host, .port = port, .path = path};
+    return URLInfo{
+        .is_https = is_https,
+        .host = host,
+        .port = port,
+        .path = path,
+    };
 }
 
 static ssize_t WriteHeaders(httplib::Stream& strm,
-                            const std::vector<Context::RequestHeader>& headers) {
+                            std::span<const Context::RequestHeader> headers) {
     ssize_t write_len = 0;
     for (const auto& x : headers) {
         auto len = strm.write_format("%s: %s\r\n", x.name.c_str(), x.value.c_str());
@@ -193,7 +198,7 @@ void Context::MakeRequest() {
         {RequestMethod::PutEmpty, "PUT"},
     };
 
-    URLInfo url_info = SplitUrl(url.c_str());
+    URLInfo url_info = SplitUrl(url);
 
     httplib::Request request;
     httplib::Error error{-1};

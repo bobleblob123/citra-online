@@ -490,8 +490,7 @@ void HTTP_C::ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout) {
             return 1'000'000;
         },
         [async_data](Kernel::HLERequestContext& ctx) {
-            IPC::RequestBuilder rb(ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 1,
-                                   0);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 0);
             if (async_data->async_res != RESULT_SUCCESS) {
                 rb.Push(async_data->async_res);
                 return;
@@ -820,13 +819,13 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
                 async_data->value_buffer->Write(header_value.data(), 0, header_value.size());
             } else {
                 LOG_DEBUG(Service_HTTP, "header={} not found", header_name_str);
-                IPC::RequestBuilder rb(ctx, 0x001E, 1, 2);
+                IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 2);
                 rb.Push(ERROR_HEADER_NOT_FOUND);
                 rb.PushMappedBuffer(*async_data->value_buffer);
                 return;
             }
 
-            IPC::RequestBuilder rb(ctx, 0x001E, 2, 2);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 2, 2);
             rb.Push(RESULT_SUCCESS);
             rb.Push(copied_size);
             rb.PushMappedBuffer(*async_data->value_buffer);
@@ -890,8 +889,7 @@ void HTTP_C::GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool time
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             if (async_data->async_res != RESULT_SUCCESS) {
-                IPC::RequestBuilder rb(
-                    ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 1, 0);
+                IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 0);
                 rb.Push(async_data->async_res);
                 return;
             }
@@ -901,8 +899,7 @@ void HTTP_C::GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool time
             const u32 response_code = http_context.response.status;
             LOG_DEBUG(Service_HTTP, "Status code: {}, response_code={}", "good", response_code);
 
-            IPC::RequestBuilder rb(ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 2,
-                                   0);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 2, 0);
             rb.Push(RESULT_SUCCESS);
             rb.Push(response_code);
         });

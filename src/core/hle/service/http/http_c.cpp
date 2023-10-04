@@ -671,9 +671,9 @@ void HTTP_C::AddRequestHeader(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    [[maybe_unused]] Context& http_context = GetContext(context_handle);
+    Context& http_context = GetContext(context_handle);
 
-    if (itr->second.state != RequestState::NotStarted) {
+    if (http_context.state != RequestState::NotStarted) {
         LOG_ERROR(Service_HTTP,
                   "Tried to add a request header on a context that has already been started.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
@@ -683,7 +683,7 @@ void HTTP_C::AddRequestHeader(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    itr->second.headers.emplace_back(name, value);
+    http_context.headers.emplace_back(name, value);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);

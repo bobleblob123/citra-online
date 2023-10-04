@@ -10,6 +10,7 @@
 #include <cryptopp/modes.h>
 #include "common/archives.h"
 #include "common/assert.h"
+#include "common/string_util.h"
 #include "core/core.h"
 #include "core/file_sys/archive_ncch.h"
 #include "core/file_sys/file_backend.h"
@@ -796,9 +797,7 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
             std::string header_name_str(
                 reinterpret_cast<const char*>(async_data->header_name.data()),
                 async_data->name_len);
-            while (header_name_str.size() && header_name_str.back() == '\0') {
-                header_name_str.pop_back();
-            }
+            Common::TruncateString(header_name_str);
 
             Context& http_context = async_data->own->GetContext(async_data->context_handle);
 

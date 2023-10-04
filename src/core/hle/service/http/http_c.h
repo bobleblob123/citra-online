@@ -57,6 +57,10 @@ enum class RequestState : u8 {
     TimedOut = 0xA,               // Request timed out?
 };
 
+enum class ClientCertID : u32 {
+    Default = 0x40, // Default client cert
+};
+
 /// Represents a client certificate along with its private key, stored as a byte array of DER data.
 /// There can only be at most one client certificate context attached to an HTTP context at any
 /// given time.
@@ -594,6 +598,13 @@ private:
 
     /// Global list of HTTP contexts currently opened.
     std::unordered_map<Context::Handle, Context> contexts;
+
+    // Get context from its handle
+    inline Context& GetContext(const Context::Handle& handle) {
+        auto it = contexts.find(handle);
+        ASSERT(it != contexts.end());
+        return it->second;
+    }
 
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;

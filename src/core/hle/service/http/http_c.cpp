@@ -222,17 +222,17 @@ void Context::MakeRequestSSL(httplib::Request& request, const URLInfo& url_info,
     {
         std::unique_ptr<httplib::SSLClient> client;
         if (uses_default_client_cert) {
-            const unsigned char* tmpCertPtr = clcert_data->certificate.data();
-            const unsigned char* tmpKeyPtr = clcert_data->private_key.data();
-            cert = d2i_X509(nullptr, &tmpCertPtr, (long)clcert_data->certificate.size());
-            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+            const unsigned char* tmp_cert_ptr = clcert_data->certificate.data();
+            const unsigned char* tmp_key_ptr = clcert_data->private_key.data();
+            cert = d2i_X509(nullptr, &tmp_cert_ptr, (long)clcert_data->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmp_key_ptr,
                                  (long)clcert_data->private_key.size());
             client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
         } else if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
-            const unsigned char* tmpCertPtr = client_cert->certificate.data();
-            const unsigned char* tmpKeyPtr = client_cert->private_key.data();
-            cert = d2i_X509(nullptr, &tmpCertPtr, (long)client_cert->certificate.size());
-            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+            const unsigned char* tmp_cert_ptr = client_cert->certificate.data();
+            const unsigned char* tmp_key_ptr = client_cert->private_key.data();
+            cert = d2i_X509(nullptr, &tmp_cert_ptr, (long)client_cert->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmp_key_ptr,
                                  (long)client_cert->private_key.size());
             client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
         } else {

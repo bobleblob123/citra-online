@@ -57,6 +57,17 @@ enum class RequestState : u8 {
     TimedOut = 0xA,               // Request timed out?
 };
 
+enum class ClientCertID : u32 {
+    Default = 0x40, // Default client cert
+};
+
+struct URLInfo {
+    bool is_https;
+    std::string host;
+    int port;
+    std::string path;
+};
+
 /// Represents a client certificate along with its private key, stored as a byte array of DER data.
 /// There can only be at most one client certificate context attached to an HTTP context at any
 /// given time.
@@ -129,8 +140,6 @@ public:
     Context() = default;
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
-
-    void MakeRequest();
 
     struct Proxy {
         std::string url;
@@ -211,6 +220,12 @@ public:
     size_t current_copied_data;
     bool uses_default_client_cert{};
     httplib::Response response;
+
+    void MakeRequest();
+    void MakeRequestNonSSL(httplib::Request& request, const URLInfo& url_info,
+                           std::vector<Context::RequestHeader>& pending_headers);
+    void MakeRequestSSL(httplib::Request& request, const URLInfo& url_info,
+                        std::vector<Context::RequestHeader>& pending_headers);
 };
 
 struct SessionData : public Kernel::SessionRequestHandler::SessionDataBase {
@@ -594,6 +609,13 @@ private:
 
     /// Global list of HTTP contexts currently opened.
     std::unordered_map<Context::Handle, Context> contexts;
+
+    // Get context from its handle
+    inline Context& GetContext(const Context::Handle& handle) {
+        auto it = contexts.find(handle);
+        ASSERT(it != contexts.end());
+        return it->second;
+    }
 
     /// Global list of  ClientCert contexts currently opened.
     std::unordered_map<ClientCertContext::Handle, std::shared_ptr<ClientCertContext>> client_certs;

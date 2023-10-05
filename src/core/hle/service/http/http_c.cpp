@@ -6,10 +6,12 @@
 #include <tuple>
 #include <unordered_map>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/url/src.hpp>
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include "common/archives.h"
 #include "common/assert.h"
+#include "common/string_util.h"
 #include "core/core.h"
 #include "core/file_sys/archive_ncch.h"
 #include "core/file_sys/file_backend.h"
@@ -63,8 +65,26 @@ const ResultCode ERROR_WRONG_CERT_HANDLE = // 0xD8A0A0C9
 const ResultCode ERROR_CERT_ALREADY_SET = // 0xD8A0A03D
     ResultCode(61, ErrorModule::HTTP, ErrorSummary::InvalidState, ErrorLevel::Permanent);
 
-static ssize_t write_headers(httplib::Stream& strm,
-                             const std::vector<Context::RequestHeader>& headers) {
+// Splits URL into its components. Example: https://citra-emu.org:443/index.html
+// is_https: true; host: citra-emu.org; port: 443; path: /index.html
+static URLInfo SplitUrl(const std::string& url) {
+    constexpr u16 default_http_port = 80;
+    constexpr u16 default_https_port = 443;
+
+    const auto result = boost::urls::parse_uri(url);
+    const bool is_https = result->scheme_id() == boost::urls::scheme::https;
+    const auto port = result->port_number();
+    const auto default_port = is_https ? default_https_port : default_http_port;
+    return URLInfo{
+        .is_https = is_https,
+        .host = std::string{result->encoded_host()},
+        .port = port == 0 ? default_port : port,
+        .path = std::string{result->encoded_path()},
+    };
+}
+
+static ssize_t WriteHeaders(httplib::Stream& strm,
+                            std::span<const Context::RequestHeader> headers) {
     ssize_t write_len = 0;
     for (const auto& x : headers) {
         auto len = strm.write_format("%s: %s\r\n", x.name.c_str(), x.value.c_str());
@@ -81,50 +101,50 @@ static ssize_t write_headers(httplib::Stream& strm,
     return write_len;
 }
 
-static std::tuple<std::string, int, std::string, bool> SplitUrl(const std::string& url) {
-    const std::string prefix = "://";
-    const auto scheme_end = url.find(prefix);
-    const auto prefix_end = scheme_end == std::string::npos ? 0 : scheme_end + prefix.length();
+static size_t HandleHeaderWrite(std::vector<Context::RequestHeader>& pending_headers,
+                                httplib::Stream& strm, httplib::Headers& httplib_headers) {
+    std::vector<Context::RequestHeader> final_headers;
+    std::vector<Context::RequestHeader>::iterator it_p;
+    httplib::Headers::iterator it_h;
 
-    bool is_https = scheme_end != std::string::npos && url.starts_with("https");
+    auto find_pending_header = [&pending_headers](const std::string& str) {
+        return std::find_if(pending_headers.begin(), pending_headers.end(),
+                            [&str](Context::RequestHeader& rh) { return rh.name == str; });
+    };
 
-    const auto path_index = url.find("/", prefix_end);
-    std::string host;
-    int port = -1;
-    std::string path;
-    if (path_index == std::string::npos) {
-        // If no path is specified after the host, set it to "/"
-        host = url.substr(prefix_end);
-        const auto port_start = host.find(":");
-        if (port_start != std::string::npos) {
-            std::string port_str = host.substr(port_start + 1);
-            host = host.substr(0, port_start);
-            char* pEnd = NULL;
-            port = std::strtol(port_str.c_str(), &pEnd, 10);
-            if (*pEnd) {
-                port = -1;
-            }
-        }
-        path = "/";
+    // Watch out for header ordering!!
+    // First: Host
+    it_p = find_pending_header("Host");
+    if (it_p != pending_headers.end()) {
+        final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
+        pending_headers.erase(it_p);
     } else {
-        host = url.substr(prefix_end, path_index - prefix_end);
-        const auto port_start = host.find(":");
-        if (port_start != std::string::npos) {
-            std::string port_str = host.substr(port_start + 1);
-            host = host.substr(0, port_start);
-            char* pEnd = NULL;
-            port = std::strtol(port_str.c_str(), &pEnd, 10);
-            if (*pEnd) {
-                port = -1;
-            }
+        it_h = httplib_headers.find("Host");
+        if (it_h != httplib_headers.end()) {
+            final_headers.push_back(Context::RequestHeader(it_h->first, it_h->second));
         }
-        path = url.substr(path_index);
     }
-    if (port == -1) {
-        port = is_https ? 443 : 80;
+
+    // Second, user defined headers
+    // Third, Content-Type (optional, appended by MakeRequest)
+    for (const auto& header : pending_headers) {
+        final_headers.push_back(header);
     }
-    return std::make_tuple(host, port, path, is_https);
-}
+
+    // Fourth: Content-Length
+    it_p = find_pending_header("Content-Length");
+    if (it_p != pending_headers.end()) {
+        final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
+        pending_headers.erase(it_p);
+    } else {
+        it_h = httplib_headers.find("Content-Length");
+        if (it_h != httplib_headers.end()) {
+            final_headers.push_back(Context::RequestHeader(it_h->first, it_h->second));
+        }
+    }
+
+    return WriteHeaders(strm, final_headers);
+};
 
 void Context::MakeRequest() {
     ASSERT(state == RequestState::NotStarted);
@@ -136,13 +156,12 @@ void Context::MakeRequest() {
         {RequestMethod::PutEmpty, "PUT"},
     };
 
-    const auto& [host, port, path, is_https] = SplitUrl(url.c_str());
+    URLInfo url_info = SplitUrl(url);
 
     httplib::Request request;
-    httplib::Error error{-1};
     std::vector<Context::RequestHeader> pending_headers;
     request.method = request_method_strings.at(method);
-    request.path = path;
+    request.path = url_info.path;
 
     request.progress = [this](u64 current, u64 total) -> bool {
         // TODO(B3N30): Is there a state that shows response header are available
@@ -151,56 +170,9 @@ void Context::MakeRequest() {
         return true;
     };
 
-    // Watch out for header ordering!
-    auto header_writter = [&pending_headers](httplib::Stream& strm,
-                                             httplib::Headers& httplib_headers) {
-        std::vector<Context::RequestHeader> final_headers;
-        std::vector<Context::RequestHeader>::iterator it_p;
-        httplib::Headers::iterator it_h;
-
-        auto find_pending_header = [&pending_headers](const std::string& str) {
-            return std::find_if(pending_headers.begin(), pending_headers.end(),
-                                [&str](Context::RequestHeader& rh) { return rh.name == str; });
-        };
-
-        // First: Host
-        it_p = find_pending_header("Host");
-        if (it_p != pending_headers.end()) {
-            final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
-            pending_headers.erase(it_p);
-        } else {
-            it_h = httplib_headers.find("Host");
-            if (it_h != httplib_headers.end()) {
-                final_headers.push_back(Context::RequestHeader(it_h->first, it_h->second));
-            }
-        }
-
-        // Second: Content-Type (optional, ignore httplib)
-        it_p = find_pending_header("Content-Type");
-        if (it_p != pending_headers.end()) {
-            final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
-            pending_headers.erase(it_p);
-        }
-
-        // Third: Content-Length
-        it_p = find_pending_header("Content-Length");
-        if (it_p != pending_headers.end()) {
-            final_headers.push_back(Context::RequestHeader(it_p->name, it_p->value));
-            pending_headers.erase(it_p);
-        } else {
-            it_h = httplib_headers.find("Content-Length");
-            if (it_h != httplib_headers.end()) {
-                final_headers.push_back(Context::RequestHeader(it_h->first, it_h->second));
-            }
-        }
-
-        // Finally, user defined headers
-        for (const auto& header : pending_headers) {
-            final_headers.push_back(header);
-        }
-
-        return write_headers(strm, final_headers);
-    };
+    for (const auto& header : headers) {
+        pending_headers.push_back(header);
+    }
 
     if (!post_data.empty()) {
         pending_headers.push_back(
@@ -209,68 +181,73 @@ void Context::MakeRequest() {
         boost::replace_all(request.body, "*", "%2A");
     }
 
-    for (const auto& header : headers) {
-        pending_headers.push_back(header);
-    }
-
     if (!post_data_raw.empty()) {
         request.body = post_data_raw;
     }
 
     state = RequestState::InProgress;
 
-    // Sadly, we have to duplicate code, the class hierarchy in httplib is not very useful...
-    if (is_https) {
-        X509* cert = nullptr;
-        EVP_PKEY* key = nullptr;
-        {
-            std::unique_ptr<httplib::SSLClient> client;
-            if (uses_default_client_cert) {
-                const unsigned char* tmpCertPtr = clcert_data->certificate.data();
-                const unsigned char* tmpKeyPtr = clcert_data->private_key.data();
-                cert = d2i_X509(nullptr, &tmpCertPtr, (long)clcert_data->certificate.size());
-                key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
-                                     (long)clcert_data->private_key.size());
-                client = std::make_unique<httplib::SSLClient>(host, port, cert, key);
-            } else {
-                if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
-                    const unsigned char* tmpCertPtr = client_cert->certificate.data();
-                    const unsigned char* tmpKeyPtr = client_cert->private_key.data();
-                    cert = d2i_X509(nullptr, &tmpCertPtr, (long)client_cert->certificate.size());
-                    key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
-                                         (long)client_cert->private_key.size());
-                    client = std::make_unique<httplib::SSLClient>(host, port, cert, key);
-                } else {
-                    client = std::make_unique<httplib::SSLClient>(host, port);
-                }
-            }
-
-            // TODO(B3N30): Check for SSLOptions-Bits and set the verify method accordingly
-            // https://www.3dbrew.org/wiki/SSL_Services#SSLOpt
-            // Hack: Since for now RootCerts are not implemented we set the VerifyMode to None.
-            client->enable_server_certificate_verification(false);
-
-            client->set_header_writer(header_writter);
-
-            if (!client->send(request, response, error)) {
-                LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
-                state = RequestState::TimedOut;
-            } else {
-                LOG_DEBUG(Service_HTTP, "Request successful");
-                // TODO(B3N30): Verify this state on HW
-                state = RequestState::ReadyToDownloadContent;
-            }
-        }
-        if (cert) {
-            X509_free(cert);
-        }
-        if (key) {
-            EVP_PKEY_free(key);
-        }
+    if (url_info.is_https) {
+        MakeRequestSSL(request, url_info, pending_headers);
     } else {
-        std::unique_ptr<httplib::Client> client = std::make_unique<httplib::Client>(host, port);
+        MakeRequestNonSSL(request, url_info, pending_headers);
+    }
+}
 
-        client->set_header_writer(header_writter);
+void Context::MakeRequestNonSSL(httplib::Request& request, const URLInfo& url_info,
+                                std::vector<Context::RequestHeader>& pending_headers) {
+    httplib::Error error{-1};
+    std::unique_ptr<httplib::Client> client =
+        std::make_unique<httplib::Client>(url_info.host, url_info.port);
+
+    client->set_header_writer(
+        [&pending_headers](httplib::Stream& strm, httplib::Headers& httplib_headers) {
+            return HandleHeaderWrite(pending_headers, strm, httplib_headers);
+        });
+
+    if (!client->send(request, response, error)) {
+        LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
+        state = RequestState::TimedOut;
+    } else {
+        LOG_DEBUG(Service_HTTP, "Request successful");
+        // TODO(B3N30): Verify this state on HW
+        state = RequestState::ReadyToDownloadContent;
+    }
+}
+void Context::MakeRequestSSL(httplib::Request& request, const URLInfo& url_info,
+                             std::vector<Context::RequestHeader>& pending_headers) {
+    httplib::Error error{-1};
+    X509* cert = nullptr;
+    EVP_PKEY* key = nullptr;
+    {
+        std::unique_ptr<httplib::SSLClient> client;
+        if (uses_default_client_cert) {
+            const unsigned char* tmpCertPtr = clcert_data->certificate.data();
+            const unsigned char* tmpKeyPtr = clcert_data->private_key.data();
+            cert = d2i_X509(nullptr, &tmpCertPtr, (long)clcert_data->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+                                 (long)clcert_data->private_key.size());
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
+        } else if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
+            const unsigned char* tmpCertPtr = client_cert->certificate.data();
+            const unsigned char* tmpKeyPtr = client_cert->private_key.data();
+            cert = d2i_X509(nullptr, &tmpCertPtr, (long)client_cert->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+                                 (long)client_cert->private_key.size());
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
+        } else {
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port);
+        }
+
+        // TODO(B3N30): Check for SSLOptions-Bits and set the verify method accordingly
+        // https://www.3dbrew.org/wiki/SSL_Services#SSLOpt
+        // Hack: Since for now RootCerts are not implemented we set the VerifyMode to None.
+        client->enable_server_certificate_verification(false);
+
+        client->set_header_writer(
+            [&pending_headers](httplib::Stream& strm, httplib::Headers& httplib_headers) {
+                return HandleHeaderWrite(pending_headers, strm, httplib_headers);
+            });
 
         if (!client->send(request, response, error)) {
             LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
@@ -280,6 +257,12 @@ void Context::MakeRequest() {
             // TODO(B3N30): Verify this state on HW
             state = RequestState::ReadyToDownloadContent;
         }
+    }
+    if (cert) {
+        X509_free(cert);
+    }
+    if (key) {
+        EVP_PKEY_free(key);
     }
 }
 
@@ -358,11 +341,11 @@ void HTTP_C::BeginRequest(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
     // This should never happen in real hardware, but can happen on citra.
-    if (itr->second.uses_default_client_cert && !itr->second.clcert_data->init) {
+    if (http_context.uses_default_client_cert && !http_context.clcert_data->init) {
+        LOG_ERROR(Service_HTTP, "failed to begin HTTP request: client cert not found.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(ERROR_STATE_ERROR);
         return;
@@ -375,9 +358,9 @@ void HTTP_C::BeginRequest(Kernel::HLERequestContext& ctx) {
     // Then there are 3? worker threads that pop the requests from the queue and send them
     // For now make every request async in it's own thread.
 
-    itr->second.request_future =
-        std::async(std::launch::async, &Context::MakeRequest, std::ref(itr->second));
-    itr->second.current_copied_data = 0;
+    http_context.request_future =
+        std::async(std::launch::async, &Context::MakeRequest, std::ref(http_context));
+    http_context.current_copied_data = 0;
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
@@ -393,11 +376,11 @@ void HTTP_C::BeginRequestAsync(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
     // This should never happen in real hardware, but can happen on citra.
-    if (itr->second.uses_default_client_cert && !itr->second.clcert_data->init) {
+    if (http_context.uses_default_client_cert && !http_context.clcert_data->init) {
+        LOG_ERROR(Service_HTTP, "failed to begin HTTP request: client cert not found.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(ERROR_STATE_ERROR);
         return;
@@ -410,9 +393,9 @@ void HTTP_C::BeginRequestAsync(Kernel::HLERequestContext& ctx) {
     // Then there are 3? worker threads that pop the requests from the queue and send them
     // For now make every request async in it's own thread.
 
-    itr->second.request_future =
-        std::async(std::launch::async, &Context::MakeRequest, std::ref(itr->second));
-    itr->second.current_copied_data = 0;
+    http_context.request_future =
+        std::async(std::launch::async, &Context::MakeRequest, std::ref(http_context));
+    http_context.current_copied_data = 0;
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
@@ -462,10 +445,7 @@ void HTTP_C::ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout) {
 
     ctx.RunAsync(
         [async_data](Kernel::HLERequestContext& ctx) {
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
-
-            Context& http_context = itr->second;
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
 
             if (async_data->timeout) {
                 auto wait_res = http_context.request_future.wait_for(
@@ -482,16 +462,12 @@ void HTTP_C::ReceiveDataImpl(Kernel::HLERequestContext& ctx, bool timeout) {
             return 1'000'000;
         },
         [async_data](Kernel::HLERequestContext& ctx) {
-            IPC::RequestBuilder rb(ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 1,
-                                   0);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 0);
             if (async_data->async_res != RESULT_SUCCESS) {
                 rb.Push(async_data->async_res);
                 return;
             }
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
-
-            Context& http_context = itr->second;
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
 
             size_t remaining_data =
                 http_context.response.body.size() - http_context.current_copied_data;
@@ -638,8 +614,7 @@ void HTTP_C::CancelConnection(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    [[maybe_unused]] Context& http_context = GetContext(context_handle);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
@@ -667,10 +642,9 @@ void HTTP_C::AddRequestHeader(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
-    if (itr->second.state != RequestState::NotStarted) {
+    if (http_context.state != RequestState::NotStarted) {
         LOG_ERROR(Service_HTTP,
                   "Tried to add a request header on a context that has already been started.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
@@ -680,7 +654,7 @@ void HTTP_C::AddRequestHeader(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    itr->second.headers.emplace_back(name, value);
+    http_context.headers.emplace_back(name, value);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
@@ -709,10 +683,9 @@ void HTTP_C::AddPostDataAscii(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
-    if (itr->second.state != RequestState::NotStarted) {
+    if (http_context.state != RequestState::NotStarted) {
         LOG_ERROR(Service_HTTP,
                   "Tried to add post data on a context that has already been started.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
@@ -722,7 +695,7 @@ void HTTP_C::AddPostDataAscii(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    itr->second.post_data.emplace(name, value);
+    http_context.post_data.emplace(name, value);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
@@ -741,10 +714,9 @@ void HTTP_C::AddPostDataRaw(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
-    if (itr->second.state != RequestState::NotStarted) {
+    if (http_context.state != RequestState::NotStarted) {
         LOG_ERROR(Service_HTTP,
                   "Tried to add post data on a context that has already been started.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
@@ -754,8 +726,8 @@ void HTTP_C::AddPostDataRaw(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    itr->second.post_data_raw.resize(buffer.GetSize());
-    buffer.Read(itr->second.post_data_raw.data(), 0, buffer.GetSize());
+    http_context.post_data_raw.resize(buffer.GetSize());
+    buffer.Read(http_context.post_data_raw.data(), 0, buffer.GetSize());
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 2);
     rb.Push(RESULT_SUCCESS);
@@ -770,7 +742,7 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
         u32 context_handle;
         u32 name_len;
         u32 value_max_len;
-        const std::vector<u8>* header_name;
+        std::span<const u8> header_name;
         Kernel::MappedBuffer* value_buffer;
     };
     std::shared_ptr<AsyncData> async_data = std::make_shared<AsyncData>();
@@ -779,7 +751,7 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
     async_data->context_handle = rp.Pop<u32>();
     async_data->name_len = rp.Pop<u32>();
     async_data->value_max_len = rp.Pop<u32>();
-    async_data->header_name = &rp.PopStaticBuffer();
+    async_data->header_name = rp.PopStaticBuffer();
     async_data->value_buffer = &rp.PopMappedBuffer();
 
     if (!PerformStateChecks(ctx, rp, async_data->context_handle)) {
@@ -788,24 +760,19 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
 
     ctx.RunAsync(
         [async_data](Kernel::HLERequestContext& ctx) {
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
-
-            itr->second.request_future.wait();
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
+            http_context.request_future.wait();
             return 0;
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             std::string header_name_str(
-                reinterpret_cast<const char*>(async_data->header_name->data()),
+                reinterpret_cast<const char*>(async_data->header_name.data()),
                 async_data->name_len);
-            while (header_name_str.size() && header_name_str.back() == '\0') {
-                header_name_str.pop_back();
-            }
+            Common::TruncateString(header_name_str);
 
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
 
-            auto& headers = itr->second.response.headers;
+            auto& headers = http_context.response.headers;
             u32 copied_size = 0;
 
             LOG_DEBUG(Service_HTTP, "header={}, max_len={}", header_name_str,
@@ -822,13 +789,13 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
                 async_data->value_buffer->Write(header_value.data(), 0, header_value.size());
             } else {
                 LOG_DEBUG(Service_HTTP, "header={} not found", header_name_str);
-                IPC::RequestBuilder rb(ctx, 0x001E, 1, 2);
+                IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 2);
                 rb.Push(ERROR_HEADER_NOT_FOUND);
                 rb.PushMappedBuffer(*async_data->value_buffer);
                 return;
             }
 
-            IPC::RequestBuilder rb(ctx, 0x001E, 2, 2);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 2, 2);
             rb.Push(RESULT_SUCCESS);
             rb.Push(copied_size);
             rb.PushMappedBuffer(*async_data->value_buffer);
@@ -874,11 +841,10 @@ void HTTP_C::GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool time
 
     ctx.RunAsync(
         [async_data](Kernel::HLERequestContext& ctx) {
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
 
             if (async_data->timeout) {
-                auto wait_res = itr->second.request_future.wait_for(
+                auto wait_res = http_context.request_future.wait_for(
                     std::chrono::nanoseconds(async_data->timeout_nanos));
                 if (wait_res == std::future_status::timeout) {
                     LOG_DEBUG(Service_HTTP, "Status code: {}", "timeout");
@@ -887,26 +853,23 @@ void HTTP_C::GetResponseStatusCodeImpl(Kernel::HLERequestContext& ctx, bool time
                                    ErrorLevel::Permanent);
                 }
             } else {
-                itr->second.request_future.wait();
+                http_context.request_future.wait();
             }
             return 0;
         },
         [async_data](Kernel::HLERequestContext& ctx) {
             if (async_data->async_res != RESULT_SUCCESS) {
-                IPC::RequestBuilder rb(
-                    ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 1, 0);
+                IPC::RequestBuilder rb(ctx, ctx.CommandID(), 1, 0);
                 rb.Push(async_data->async_res);
                 return;
             }
 
-            auto itr = async_data->own->contexts.find(async_data->context_handle);
-            ASSERT(itr != async_data->own->contexts.end());
+            Context& http_context = async_data->own->GetContext(async_data->context_handle);
 
-            const u32 response_code = itr->second.response.status;
+            const u32 response_code = http_context.response.status;
             LOG_DEBUG(Service_HTTP, "Status code: {}, response_code={}", "good", response_code);
 
-            IPC::RequestBuilder rb(ctx, static_cast<u16>(ctx.CommandHeader().command_id.Value()), 2,
-                                   0);
+            IPC::RequestBuilder rb(ctx, ctx.CommandID(), 2, 0);
             rb.Push(RESULT_SUCCESS);
             rb.Push(response_code);
         });
@@ -940,7 +903,7 @@ void HTTP_C::AddDefaultCert(Kernel::HLERequestContext& ctx) {
 void HTTP_C::SetDefaultClientCert(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
     const Context::Handle context_handle = rp.Pop<u32>();
-    const u32 client_cert_id = rp.Pop<u32>();
+    const ClientCertID client_cert_id = static_cast<ClientCertID>(rp.Pop<u32>());
 
     LOG_DEBUG(Service_HTTP, "client_cert_id={}", client_cert_id);
 
@@ -948,17 +911,16 @@ void HTTP_C::SetDefaultClientCert(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
-    if (client_cert_id != 0x40) {
+    if (client_cert_id != ClientCertID::Default) {
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
         rb.Push(ERROR_WRONG_CERT_ID);
         return;
     }
 
-    itr->second.uses_default_client_cert = true;
-    itr->second.clcert_data = &GetClCertA();
+    http_context.uses_default_client_cert = true;
+    http_context.clcert_data = &GetClCertA();
 
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
@@ -976,8 +938,7 @@ void HTTP_C::SetClientCertContext(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto http_context_itr = contexts.find(context_handle);
-    ASSERT(http_context_itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
     auto cert_context_itr = client_certs.find(client_cert_handle);
     if (cert_context_itr == client_certs.end()) {
@@ -987,7 +948,7 @@ void HTTP_C::SetClientCertContext(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    if (http_context_itr->second.ssl_config.client_cert_ctx.lock()) {
+    if (http_context.ssl_config.client_cert_ctx.lock()) {
         LOG_ERROR(Service_HTTP,
                   "Tried to set a client cert to a context that already has a client cert");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -995,7 +956,7 @@ void HTTP_C::SetClientCertContext(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    if (http_context_itr->second.state != RequestState::NotStarted) {
+    if (http_context.state != RequestState::NotStarted) {
         LOG_ERROR(Service_HTTP,
                   "Tried to set a client cert on a context that has already been started.");
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -1004,7 +965,7 @@ void HTTP_C::SetClientCertContext(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    http_context_itr->second.ssl_config.client_cert_ctx = cert_context_itr->second;
+    http_context.ssl_config.client_cert_ctx = cert_context_itr->second;
     IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
     rb.Push(RESULT_SUCCESS);
 }
@@ -1016,8 +977,7 @@ void HTTP_C::GetSSLError(Kernel::HLERequestContext& ctx) {
 
     LOG_WARNING(Service_HTTP, "(STUBBED) called, context_handle={}, unk={}", context_handle, unk);
 
-    auto http_context_itr = contexts.find(context_handle);
-    ASSERT(http_context_itr != contexts.end());
+    [[maybe_unused]] Context& http_context = GetContext(context_handle);
 
     IPC::RequestBuilder rb = rp.MakeBuilder(2, 0);
     rb.Push(RESULT_SUCCESS);
@@ -1103,7 +1063,7 @@ void HTTP_C::OpenDefaultClientCertContext(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    constexpr u8 default_cert_id = 0x40;
+    constexpr u8 default_cert_id = static_cast<u8>(ClientCertID::Default);
     if (cert_id != default_cert_id) {
         LOG_ERROR(Service_HTTP, "called with invalid cert_id {}", cert_id);
         IPC::RequestBuilder rb = rp.MakeBuilder(1, 0);
@@ -1210,28 +1170,27 @@ void HTTP_C::GetDownloadSizeState(Kernel::HLERequestContext& ctx) {
         return;
     }
 
-    auto itr = contexts.find(context_handle);
-    ASSERT(itr != contexts.end());
+    Context& http_context = GetContext(context_handle);
 
     // On the real console, the current downloaded progress and the total size of the content gets
     // returned. Since we do not support chunked downloads on the host, always return the content
     // length if the download is complete and 0 otherwise.
     u32 content_length = 0;
-    const bool is_complete = itr->second.request_future.wait_for(std::chrono::milliseconds(0)) ==
+    const bool is_complete = http_context.request_future.wait_for(std::chrono::milliseconds(0)) ==
                              std::future_status::ready;
     if (is_complete) {
-        const auto& headers = itr->second.response.headers;
+        const auto& headers = http_context.response.headers;
         const auto& it = headers.find("Content-Length");
         if (it != headers.end()) {
             content_length = std::stoi(it->second);
         }
     }
 
-    LOG_DEBUG(Service_HTTP, "current={}, total={}", itr->second.current_copied_data,
+    LOG_DEBUG(Service_HTTP, "current={}, total={}", http_context.current_copied_data,
               content_length);
     IPC::RequestBuilder rb = rp.MakeBuilder(3, 0);
     rb.Push(RESULT_SUCCESS);
-    rb.Push(static_cast<u32>(itr->second.current_copied_data));
+    rb.Push(static_cast<u32>(http_context.current_copied_data));
     rb.Push(content_length);
 }
 

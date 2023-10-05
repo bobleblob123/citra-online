@@ -65,13 +65,6 @@ const ResultCode ERROR_WRONG_CERT_HANDLE = // 0xD8A0A0C9
 const ResultCode ERROR_CERT_ALREADY_SET = // 0xD8A0A03D
     ResultCode(61, ErrorModule::HTTP, ErrorSummary::InvalidState, ErrorLevel::Permanent);
 
-struct URLInfo {
-    bool is_https;
-    std::string host;
-    int port;
-    std::string path;
-};
-
 // Splits URL into its components. Example: https://citra-emu.org:443/index.html
 // is_https: true; host: citra-emu.org; port: 443; path: /index.html
 static URLInfo SplitUrl(const std::string& url) {
@@ -166,7 +159,6 @@ void Context::MakeRequest() {
     URLInfo url_info = SplitUrl(url);
 
     httplib::Request request;
-    httplib::Error error{-1};
     std::vector<Context::RequestHeader> pending_headers;
     request.method = request_method_strings.at(method);
     request.path = url_info.path;
@@ -176,11 +168,6 @@ void Context::MakeRequest() {
         current_download_size_bytes = current;
         total_download_size_bytes = total;
         return true;
-    };
-
-    auto header_writter = [&pending_headers](httplib::Stream& strm,
-                                             httplib::Headers& httplib_headers) {
-        return HandleHeaderWrite(pending_headers, strm, httplib_headers);
     };
 
     for (const auto& header : headers) {
@@ -200,59 +187,67 @@ void Context::MakeRequest() {
 
     state = RequestState::InProgress;
 
-    // Sadly, we have to duplicate code, the class hierarchy in httplib is not very useful...
     if (url_info.is_https) {
-        X509* cert = nullptr;
-        EVP_PKEY* key = nullptr;
-        {
-            std::unique_ptr<httplib::SSLClient> client;
-            if (uses_default_client_cert) {
-                const unsigned char* tmpCertPtr = clcert_data->certificate.data();
-                const unsigned char* tmpKeyPtr = clcert_data->private_key.data();
-                cert = d2i_X509(nullptr, &tmpCertPtr, (long)clcert_data->certificate.size());
-                key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
-                                     (long)clcert_data->private_key.size());
-                client =
-                    std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
-            } else if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
-                const unsigned char* tmpCertPtr = client_cert->certificate.data();
-                const unsigned char* tmpKeyPtr = client_cert->private_key.data();
-                cert = d2i_X509(nullptr, &tmpCertPtr, (long)client_cert->certificate.size());
-                key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
-                                     (long)client_cert->private_key.size());
-                client =
-                    std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
-            } else {
-                client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port);
-            }
-
-            // TODO(B3N30): Check for SSLOptions-Bits and set the verify method accordingly
-            // https://www.3dbrew.org/wiki/SSL_Services#SSLOpt
-            // Hack: Since for now RootCerts are not implemented we set the VerifyMode to None.
-            client->enable_server_certificate_verification(false);
-
-            client->set_header_writer(header_writter);
-
-            if (!client->send(request, response, error)) {
-                LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
-                state = RequestState::TimedOut;
-            } else {
-                LOG_DEBUG(Service_HTTP, "Request successful");
-                // TODO(B3N30): Verify this state on HW
-                state = RequestState::ReadyToDownloadContent;
-            }
-        }
-        if (cert) {
-            X509_free(cert);
-        }
-        if (key) {
-            EVP_PKEY_free(key);
-        }
+        MakeRequestSSL(request, url_info, pending_headers);
     } else {
-        std::unique_ptr<httplib::Client> client =
-            std::make_unique<httplib::Client>(url_info.host, url_info.port);
+        MakeRequestNonSSL(request, url_info, pending_headers);
+    }
+}
 
-        client->set_header_writer(header_writter);
+void Context::MakeRequestNonSSL(httplib::Request& request, const URLInfo& url_info,
+                                std::vector<Context::RequestHeader>& pending_headers) {
+    httplib::Error error{-1};
+    std::unique_ptr<httplib::Client> client =
+        std::make_unique<httplib::Client>(url_info.host, url_info.port);
+
+    client->set_header_writer(
+        [&pending_headers](httplib::Stream& strm, httplib::Headers& httplib_headers) {
+            return HandleHeaderWrite(pending_headers, strm, httplib_headers);
+        });
+
+    if (!client->send(request, response, error)) {
+        LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
+        state = RequestState::TimedOut;
+    } else {
+        LOG_DEBUG(Service_HTTP, "Request successful");
+        // TODO(B3N30): Verify this state on HW
+        state = RequestState::ReadyToDownloadContent;
+    }
+}
+void Context::MakeRequestSSL(httplib::Request& request, const URLInfo& url_info,
+                             std::vector<Context::RequestHeader>& pending_headers) {
+    httplib::Error error{-1};
+    X509* cert = nullptr;
+    EVP_PKEY* key = nullptr;
+    {
+        std::unique_ptr<httplib::SSLClient> client;
+        if (uses_default_client_cert) {
+            const unsigned char* tmpCertPtr = clcert_data->certificate.data();
+            const unsigned char* tmpKeyPtr = clcert_data->private_key.data();
+            cert = d2i_X509(nullptr, &tmpCertPtr, (long)clcert_data->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+                                 (long)clcert_data->private_key.size());
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
+        } else if (auto client_cert = ssl_config.client_cert_ctx.lock()) {
+            const unsigned char* tmpCertPtr = client_cert->certificate.data();
+            const unsigned char* tmpKeyPtr = client_cert->private_key.data();
+            cert = d2i_X509(nullptr, &tmpCertPtr, (long)client_cert->certificate.size());
+            key = d2i_PrivateKey(EVP_PKEY_RSA, nullptr, &tmpKeyPtr,
+                                 (long)client_cert->private_key.size());
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port, cert, key);
+        } else {
+            client = std::make_unique<httplib::SSLClient>(url_info.host, url_info.port);
+        }
+
+        // TODO(B3N30): Check for SSLOptions-Bits and set the verify method accordingly
+        // https://www.3dbrew.org/wiki/SSL_Services#SSLOpt
+        // Hack: Since for now RootCerts are not implemented we set the VerifyMode to None.
+        client->enable_server_certificate_verification(false);
+
+        client->set_header_writer(
+            [&pending_headers](httplib::Stream& strm, httplib::Headers& httplib_headers) {
+                return HandleHeaderWrite(pending_headers, strm, httplib_headers);
+            });
 
         if (!client->send(request, response, error)) {
             LOG_ERROR(Service_HTTP, "Request failed: {}: {}", error, httplib::to_string(error));
@@ -262,6 +257,12 @@ void Context::MakeRequest() {
             // TODO(B3N30): Verify this state on HW
             state = RequestState::ReadyToDownloadContent;
         }
+    }
+    if (cert) {
+        X509_free(cert);
+    }
+    if (key) {
+        EVP_PKEY_free(key);
     }
 }
 

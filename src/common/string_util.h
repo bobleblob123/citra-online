@@ -88,7 +88,7 @@ std::string UTF16BufferToUTF8(const T& text) {
 /**
  * Removes trailing null bytes from the string.
  */
-[[nodiscard]] void TruncateString(std::string& str) {
+inline void TruncateString(std::string& str) {
     while (str.size() && str.back() == '\0') {
         str.pop_back();
     }

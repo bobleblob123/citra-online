@@ -6,6 +6,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <boost/algorithm/string/replace.hpp>
+#include <boost/url.hpp>
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include "common/archives.h"
@@ -74,54 +75,18 @@ struct URLInfo {
 // Splits URL into its components. Example: https://citra-emu.org:443/index.html
 // is_https: true; host: citra-emu.org; port: 443; path: /index.html
 static URLInfo SplitUrl(const std::string& url) {
-    const std::string prefix = "://";
-    const auto scheme_end = url.find(prefix);
-    const auto prefix_end = scheme_end == std::string::npos ? 0 : scheme_end + prefix.length();
+    constexpr u16 default_http_port = 80;
+    constexpr u16 default_https_port = 443;
 
-    bool is_https = scheme_end != std::string::npos && url.starts_with("https");
-
-    const auto path_index = url.find("/", prefix_end);
-    std::string host;
-    int port = -1;
-    constexpr int default_http_port = 80;
-    constexpr int default_https_port = 443;
-    std::string path;
-    if (path_index == std::string::npos) {
-        // If no path is specified after the host, set it to "/"
-        host = url.substr(prefix_end);
-        const auto port_start = host.find(":");
-        if (port_start != std::string::npos) {
-            std::string port_str = host.substr(port_start + 1);
-            host = host.substr(0, port_start);
-            char* pEnd = NULL;
-            port = std::strtol(port_str.c_str(), &pEnd, 10);
-            if (*pEnd) {
-                port = -1;
-            }
-        }
-        path = "/";
-    } else {
-        host = url.substr(prefix_end, path_index - prefix_end);
-        const auto port_start = host.find(":");
-        if (port_start != std::string::npos) {
-            std::string port_str = host.substr(port_start + 1);
-            host = host.substr(0, port_start);
-            char* pEnd = NULL;
-            port = std::strtol(port_str.c_str(), &pEnd, 10);
-            if (*pEnd) {
-                port = -1;
-            }
-        }
-        path = url.substr(path_index);
-    }
-    if (port == -1) {
-        port = is_https ? default_https_port : default_http_port;
-    }
+    const auto result = boost::urls::parse_uri(url);
+    const bool is_https = result->scheme_id() == boost::urls::scheme::https;
+    const auto port = result->port_number();
+    const auto default_port = is_https ? default_https_port : default_http_port;
     return URLInfo{
         .is_https = is_https,
-        .host = host,
-        .port = port,
-        .path = path,
+        .host = std::string{result->encoded_host()},
+        .port = port == 0 ? default_port : port,
+        .path = std::string{result->encoded_path()},
     };
 }
 
@@ -785,7 +750,7 @@ void HTTP_C::GetResponseHeader(Kernel::HLERequestContext& ctx) {
     async_data->context_handle = rp.Pop<u32>();
     async_data->name_len = rp.Pop<u32>();
     async_data->value_max_len = rp.Pop<u32>();
-    async_data->header_name = std::span<const u8>(rp.PopStaticBuffer());
+    async_data->header_name = rp.PopStaticBuffer();
     async_data->value_buffer = &rp.PopMappedBuffer();
 
     if (!PerformStateChecks(ctx, rp, async_data->context_handle)) {
@@ -937,7 +902,7 @@ void HTTP_C::AddDefaultCert(Kernel::HLERequestContext& ctx) {
 void HTTP_C::SetDefaultClientCert(Kernel::HLERequestContext& ctx) {
     IPC::RequestParser rp(ctx);
     const Context::Handle context_handle = rp.Pop<u32>();
-    const ClientCertID client_cert_id = rp.Pop<ClientCertID>();
+    const ClientCertID client_cert_id = static_cast<ClientCertID>(rp.Pop<u32>());
 
     LOG_DEBUG(Service_HTTP, "client_cert_id={}", client_cert_id);
 

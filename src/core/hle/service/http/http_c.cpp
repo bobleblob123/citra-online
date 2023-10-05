@@ -6,7 +6,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <boost/algorithm/string/replace.hpp>
-#include <boost/url.hpp>
+#include <boost/url/src.hpp>
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include "common/archives.h"

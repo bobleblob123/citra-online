@@ -175,7 +175,16 @@ endif()
 
 # JSON
 add_library(json-headers INTERFACE)
-target_include_directories(json-headers INTERFACE ./json)
+if (USE_SYSTEM_JSON)
+    find_package(nlohmann_json REQUIRED)
+    target_link_libraries(json-headers INTERFACE nlohmann_json::nlohmann_json)
+    get_target_property(NLOHMANN_PREFIX nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+    # The nlohmann-json3 package expects "#include <nlohmann/json.hpp>"
+    # Citra uses "#include <json.hpp>" so we have to add this manually
+    target_include_directories(json-headers SYSTEM INTERFACE "${NLOHMANN_PREFIX}/nlohmann")
+else()
+    target_include_directories(json-headers SYSTEM INTERFACE ./json)
+endif()
 
 # OpenSSL
 if (USE_SYSTEM_OPENSSL)
@@ -200,8 +209,13 @@ endif()
 # httplib
 add_library(httplib INTERFACE)
 if(USE_SYSTEM_CPP_HTTPLIB)
-    find_package(CppHttp REQUIRED)
-    target_link_libraries(httplib SYSTEM INTERFACE cpp-httplib::cpp-httplib)
+    find_package(CppHttp 0.14.1)
+    if(CppHttp_FOUND)
+        target_link_libraries(httplib SYSTEM INTERFACE cpp-httplib::cpp-httplib)
+    else()
+        message(STATUS "Cpp-httplib not found or not suitable version! Falling back to bundled...")
+        target_include_directories(httplib SYSTEM INTERFACE ./httplib)
+    endif()
 else()
     target_include_directories(httplib SYSTEM INTERFACE ./httplib)
 endif()
